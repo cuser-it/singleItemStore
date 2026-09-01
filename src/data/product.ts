@@ -1,0 +1,90 @@
+import type { Product } from './types';
+
+export const product: Product = {
+  shopName: '单品商城 · 正品官方',
+  title: '参茸 养心益肾胶囊 正品官方 勃起苦困难 阳痿早泄 OTC 国药准字',
+  subtitle: '本品售出，非质量问题不退不换',
+  highlight: '立赠1盒男士战斗礼包，中西结合更强更科学',
+  serviceNote: '免费包邮 · 18:00 前下单承诺当日发出',
+  guarantee: ['商城官方自营', '正品保证，不仅全，而且更安全', '下单后短信通知物流', '支付成功后进入客服引导'],
+  heroImages: [
+    { src: '/assets/hero-1.jpg', alt: '商品主图 1' },
+    { src: '/assets/hero-2.jpg', alt: '商品主图 2' },
+    { src: '/assets/hero-3.jpg', alt: '商品主图 3' },
+    { src: '/assets/hero-4.jpg', alt: '商品主图 4' },
+    { src: '/assets/hero-5.jpg', alt: '商品主图 5' },
+  ],
+  bundles: [
+    {
+      id: 'single',
+      name: '单盒体验装',
+      subtitle: '先试用再决定',
+      price: 99,
+      originalPrice: 299,
+      saleLabel: '券后价',
+    },
+    {
+      id: 'double',
+      name: '2盒组合装',
+      subtitle: '更适合持续使用',
+      price: 178,
+      originalPrice: 598,
+      saleLabel: '组合价',
+      highlight: '立减 20%',
+    },
+    {
+      id: 'family',
+      name: '3盒家庭装',
+      subtitle: '赠礼包装 + 优先发货',
+      price: 258,
+      originalPrice: 897,
+      saleLabel: '限时价',
+      highlight: '赠礼盒',
+    },
+  ],
+  specs: [
+    { label: '产品描述', value: '立赠 1 盒男士战斗礼包，中西结合更强更科学' },
+    { label: '邮费说明', value: '免费包邮' },
+    { label: '温馨提示', value: '正品保证，不仅全，而且更安全' },
+    { label: '发货时间', value: '18:00 前下单，承诺当日发出' },
+  ],
+  reviews: [
+    {
+      id: 'r1',
+      name: '悹**7',
+      date: '2026-08-26',
+      rating: 5,
+      text: '这次在网上看到就买来试试，效果是真心好啊。产品用着挺稳，物流也快，包装很完整。',
+      tags: ['效果明显', '发货快', '包装完整'],
+      images: ['/assets/review-tags.png'],
+    },
+    {
+      id: 'r2',
+      name: '张**9',
+      date: '2026-08-28',
+      rating: 5,
+      text: '客服回复很及时，查询订单也方便。套餐价格比单买更划算，准备继续复购。',
+      tags: ['价格便宜', '服务好', '物流快'],
+      images: ['/assets/review-tags.png'],
+    },
+  ],
+  detailImages: [
+    '/assets/detail-1.jpg',
+    '/assets/detail-2.jpg',
+    '/assets/detail-3.jpg',
+    '/assets/detail-4.jpg',
+    '/assets/detail-5.jpg',
+    '/assets/detail-6.jpg',
+    '/assets/detail-7.jpg',
+  ],
+  faqs: [
+    {
+      question: '下单后什么时候发货？',
+      answer: '活动期间按下单顺序发出，最晚于次日中午 12 点前发出，发货后会通过短信告知快递单号。',
+    },
+    {
+      question: '如何联系客服？如何跟踪订单？',
+      answer: '支付成功页会展示客服二维码和售后电话，用户也可以在订单查询区输入手机号查看支付和发货状态。',
+    },
+  ],
+};
