@@ -1,0 +1,65 @@
+# Existing local reference material
+/dome/
+/stitch_exports/
+/单品商城系统 PRD.md
+/单品商城系统技术设计文档.md
+
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+*.local
+
+# Dependencies
+node_modules/
+bower_components/
+vendor/
+
+# Build output and caches
+dist/
+build/
+out/
+.cache/
+.parcel-cache/
+.vite/
+.next/
+.nuxt/
+.output/
+coverage/
+*.tsbuildinfo
+
+# Logs and runtime files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.pid
+*.pid.lock
+
+# Test and tool caches
+.eslintcache
+.stylelintcache
+.nyc_output/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+
+# IDE and editor settings
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
