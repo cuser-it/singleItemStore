@@ -26,6 +26,16 @@ import { App } from './App';
 
 beforeEach(() => {
   window.history.replaceState({}, '', '/');
+  window.matchMedia = ((query: string) => ({
+    matches: query.includes('min-width: 1024px'),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
 });
 
 afterEach(() => {
@@ -52,12 +62,33 @@ describe('App', () => {
     expect(screen.getByLabelText('确认订单')).toHaveClass('sheet--open');
   });
 
-  it('shows the admin login screen on /admin/login', async () => {
+  it('shows the admin login screen on desktop', async () => {
     window.history.replaceState({}, '', '/admin/login');
 
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: '后台登录' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument();
+    expect(screen.getByText('后台仅支持桌面端访问，请使用电脑浏览器继续。')).toBeInTheDocument();
+  });
+
+  it('blocks admin pages on mobile', async () => {
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+    window.history.replaceState({}, '', '/admin');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '请使用桌面浏览器访问管理页' })).toBeInTheDocument();
+    expect(screen.queryByText('后台登录')).toBeNull();
+    expect(screen.queryByRole('button', { name: '登录' })).toBeNull();
   });
 });
