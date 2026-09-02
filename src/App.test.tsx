@@ -30,9 +30,22 @@ vi.mock('./api', () => ({
   updateReview: vi.fn(),
   updateSite: vi.fn(),
   uploadAsset: vi.fn(),
+  createSku: vi.fn(),
+  updateSku: vi.fn(),
+  deleteSku: vi.fn(),
+  createOrder: vi.fn(),
+  queryPublicOrder: vi.fn(),
+  fetchAdminSkus: vi.fn(),
+  fetchAdminOrders: vi.fn(),
+  fetchPaymentSettings: vi.fn(),
+  savePaymentSettings: vi.fn(),
+  shipOrder: vi.fn(),
+  markOrderRefunded: vi.fn(),
+  softDeleteOrder: vi.fn(),
+  exportOrders: vi.fn(),
 }))
 
-import { activateSite, createReview, createSite, deleteFloatingPurchase, deleteMediaAsset, deleteReview, deleteSite, fetchAdminBootstrap, fetchAdminMe, fetchPublicBootstrap, saveSiteSettings, uploadAsset } from './api';
+import { activateSite, createReview, createSite, deleteFloatingPurchase, deleteMediaAsset, deleteReview, deleteSite, fetchAdminBootstrap, fetchAdminMe, fetchPublicBootstrap, saveSiteSettings, uploadAsset, fetchAdminSkus, fetchAdminOrders, fetchPaymentSettings } from './api';
 import { App } from './App';
 
 beforeEach(() => {
@@ -40,6 +53,23 @@ beforeEach(() => {
   vi.mocked(fetchAdminMe).mockResolvedValue(false);
   vi.mocked(fetchAdminBootstrap).mockResolvedValue(adminBootstrap);
   vi.mocked(fetchPublicBootstrap).mockResolvedValue(defaultBootstrap);
+  vi.mocked(fetchAdminSkus).mockResolvedValue(defaultBootstrap.settings.productVariants.map((item, index) => ({
+    id: index + 1,
+    siteId: defaultBootstrap.site.id,
+    skuCode: item.id,
+    name: item.name,
+    subtitle: item.subtitle,
+    price: item.price.toFixed(2),
+    originalPrice: item.originalPrice.toFixed(2),
+    saleLabel: item.saleLabel,
+    highlight: item.highlight,
+    enabled: true,
+    sortOrder: index + 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  })));
+  vi.mocked(fetchAdminOrders).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 });
+  vi.mocked(fetchPaymentSettings).mockResolvedValue({ gatewayUrl: 'https://pay.example.test/submit.php', merchantId: 'demo', enabledChannels: ['alipay', 'wechat'], notifyUrl: '/api/payment/epay/notify', returnUrl: '/payment/return', secretMasked: 'dem******ret', updatedAt: new Date().toISOString() });
   vi.mocked(createSite).mockResolvedValue({ ...defaultBootstrap.site, id: 3, name: '华东商城', slug: 'east-store', isActive: false });
   vi.mocked(activateSite).mockResolvedValue({ ...defaultBootstrap.site, id: 2, name: '第二站点', slug: 'second-site', isActive: true });
   vi.mocked(uploadAsset).mockResolvedValue({ source: '/img/review-upload.jpg', resolvedUrl: '/img/review-upload.jpg' });

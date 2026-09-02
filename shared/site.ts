@@ -1,3 +1,5 @@
+import type { ProductSku } from './order';
+
 export type MediaSection = 'hero' | 'detail';
 export type MediaSourceType = 'upload' | 'url';
 
@@ -89,6 +91,7 @@ export type PublicBootstrap = {
   reviews: Review[];
   allReviews: Review[];
   floatingPurchases: FloatingPurchase[];
+  skus?: ProductSku[];
 };
 
 export type AdminBootstrap = PublicBootstrap & {

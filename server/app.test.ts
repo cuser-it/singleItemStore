@@ -23,6 +23,17 @@ async function startServer() {
   return httpServer;
 }
 
+async function postJson<T>(pathName: string, body: unknown, cookie = authCookie) {
+  const response = await fetch(`${baseUrl}${pathName}`, {
+    method: 'POST',
+    headers: { cookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) as T : undefined as T;
+  return { response, data };
+}
+
 async function login() {
   const response = await fetch(`${baseUrl}/api/admin/login`, {
     method: 'POST',
@@ -244,6 +255,76 @@ describe('backend', () => {
     expect(firstBootstrap.settings.shopName).not.toBe('第二站点店铺');
     expect(firstBootstrap.detailImages.every((item) => item.siteId === 1)).toBe(true);
     expect(firstBootstrap.detailImages.length).toBeGreaterThan(secondDetailImages.length);
+  });
+  it('creates orders from enabled SKUs and handles payment notify idempotently', async () => {
+    await login();
+
+    const skus = await fetch(`${baseUrl}/api/admin/skus`, { headers: { cookie: authCookie } }).then((response) => response.json()) as Array<{ id: number; price: string }>;
+    expect(skus.length).toBeGreaterThan(0);
+
+    const payload = {
+      skuId: skus[0].id,
+      quantity: 2,
+      recipientName: '测试用户',
+      phone: '13800138000',
+      address: '上海市测试路 1 号',
+      paymentChannel: 'alipay',
+      idempotencyKey: 'same-submit',
+      ignoredPrice: '0.01',
+    };
+    const first = await postJson<{ order: { id: number; orderNo: string; totalAmount: string; paymentStatus: string }; paymentUrl: string }>('/api/public/orders', payload, '');
+    expect(first.response.status).toBe(201);
+    expect(first.data.order.totalAmount).toBe((Number(skus[0].price) * 2).toFixed(2));
+    expect(first.data.order.paymentStatus).toBe('PAYING');
+    expect(first.data.paymentUrl).toContain(first.data.order.orderNo);
+
+    const second = await postJson<{ order: { id: number; orderNo: string } }>('/api/public/orders', payload, '');
+    expect(second.data.order.id).toBe(first.data.order.id);
+
+    const notifyParams = await fetch(`${baseUrl}/api/payment/mock-notify/${first.data.order.orderNo}`, { headers: { cookie: authCookie } }).then((response) => response.json()) as Record<string, string>;
+    const notify = await fetch(`${baseUrl}/api/payment/epay/notify?${new URLSearchParams(notifyParams).toString()}`);
+    expect(notify.status).toBe(200);
+    await expect(notify.text()).resolves.toBe('success');
+
+    const duplicate = await fetch(`${baseUrl}/api/payment/epay/notify?${new URLSearchParams(notifyParams).toString()}`);
+    expect(duplicate.status).toBe(200);
+
+    const orders = await fetch(`${baseUrl}/api/admin/orders?paymentStatus=PAID`, { headers: { cookie: authCookie } }).then((response) => response.json()) as { items: Array<{ id: number; paymentStatus: string }> };
+    expect(orders.items.some((order) => order.id === first.data.order.id && order.paymentStatus === 'PAID')).toBe(true);
+  });
+
+  it('enforces shipping, refund marking, soft delete conditions, and export columns', async () => {
+    await login();
+    const skus = await fetch(`${baseUrl}/api/admin/skus`, { headers: { cookie: authCookie } }).then((response) => response.json()) as Array<{ id: number }>;
+    const created = await postJson<{ order: { id: number } }>('/api/public/orders', { skuId: skus[0].id, quantity: 1, recipientName: '运营用户', phone: '13900139000', address: '北京市测试路 2 号', paymentChannel: 'wechat' }, '');
+
+    const badShip = await postJson(`/api/admin/orders/${created.data.order.id}/ship`, { logisticsCompany: '', logisticsNo: '' });
+    expect(badShip.response.status).toBe(400);
+
+    const shipped = await postJson<{ fulfillmentStatus: string }>(`/api/admin/orders/${created.data.order.id}/ship`, { logisticsCompany: '顺丰', logisticsNo: 'SF123' });
+    expect(shipped.response.status).toBe(200);
+    expect(shipped.data.fulfillmentStatus).toBe('SHIPPED');
+
+    const earlyDelete = await fetch(`${baseUrl}/api/admin/orders/${created.data.order.id}`, { method: 'DELETE', headers: { cookie: authCookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ deletionReason: '误删测试' }) });
+    expect(earlyDelete.status).toBe(400);
+
+    const noNote = await postJson(`/api/admin/orders/${created.data.order.id}/refund-mark`, { refundNote: '' });
+    expect(noNote.response.status).toBe(400);
+
+    const refunded = await postJson<{ paymentStatus: string }>(`/api/admin/orders/${created.data.order.id}/refund-mark`, { refundNote: '线下已退款' });
+    expect(refunded.data.paymentStatus).toBe('REFUNDED');
+
+    const deleted = await fetch(`${baseUrl}/api/admin/orders/${created.data.order.id}`, { method: 'DELETE', headers: { cookie: authCookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ deletionReason: '已退款清理' }) });
+    expect(deleted.status).toBe(200);
+
+    const activeOrders = await fetch(`${baseUrl}/api/admin/orders`, { headers: { cookie: authCookie } }).then((response) => response.json()) as { items: Array<{ id: number }> };
+    expect(activeOrders.items.some((order) => order.id === created.data.order.id)).toBe(false);
+
+    const exportResponse = await fetch(`${baseUrl}/api/admin/orders/export?deletedStatus=all&columns=orderNo,recipientName,totalAmount`, { headers: { cookie: authCookie } });
+    expect(exportResponse.status).toBe(200);
+    expect(exportResponse.headers.get('content-disposition')).toContain('orders.xlsx');
+    const exported = new Uint8Array(await exportResponse.arrayBuffer());
+    expect(Array.from(exported.slice(0, 2))).toEqual([80, 75]);
   });
 });
 

@@ -16,6 +16,10 @@ model Site {
   mediaAssets       MediaAsset[]
   reviews           Review[]
   floatingPurchases FloatingPurchase[]
+  productSkus       ProductSku[]
+  orders            Order[]
+  paymentSettings   PaymentSettings?
+  operationLogs     OperationLog[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -88,4 +92,110 @@ model FloatingPurchase {
   updatedAt DateTime @updatedAt
 
   @@index([siteId])
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAYING
+  PAID
+  PAYMENT_FAILED
+  REFUNDED
+}
+
+enum FulfillmentStatus {
+  WAIT_SHIP
+  SHIPPED
+}
+
+model ProductSku {
+  id            Int      @id @default(autoincrement())
+  siteId        Int
+  site          Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  skuCode       String
+  name          String
+  subtitle      String
+  price         Decimal  @db.Decimal(10, 2)
+  originalPrice Decimal  @db.Decimal(10, 2)
+  saleLabel     String
+  highlight     String?
+  enabled       Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  orders        Order[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([siteId, skuCode])
+  @@index([siteId, enabled])
+}
+
+model Order {
+  id                Int               @id @default(autoincrement())
+  orderNo           String            @unique
+  siteId            Int
+  site              Site              @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  skuId             Int?
+  sku               ProductSku?       @relation(fields: [skuId], references: [id], onDelete: SetNull)
+  skuCode           String
+  skuName           String
+  productName       String
+  quantity          Int
+  unitAmount        Decimal           @db.Decimal(10, 2)
+  totalAmount       Decimal           @db.Decimal(10, 2)
+  recipientName     String
+  phone             String
+  address           String
+  paymentChannel    String
+  paymentStatus     PaymentStatus     @default(UNPAID)
+  thirdPartyTradeNo String?
+  paidAt            DateTime?
+  fulfillmentStatus FulfillmentStatus @default(WAIT_SHIP)
+  logisticsCompany  String?
+  logisticsNo       String?
+  shippedAt         DateTime?
+  refundedAt        DateTime?
+  refundNote        String?
+  refundMarkedBy    String?
+  deletedAt         DateTime?
+  deletedBy         String?
+  deletionReason    String?
+  idempotencyKey    String?
+  operationLogs     OperationLog[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@unique([siteId, idempotencyKey])
+  @@index([siteId, createdAt])
+  @@index([siteId, paymentStatus])
+  @@index([siteId, fulfillmentStatus])
+  @@index([siteId, deletedAt])
+}
+
+model PaymentSettings {
+  id              Int      @id @default(autoincrement())
+  siteId          Int      @unique
+  site            Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  gatewayUrl      String
+  merchantId      String
+  encryptedSecret String
+  enabledChannels Json
+  notifyUrl       String
+  returnUrl       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model OperationLog {
+  id        Int      @id @default(autoincrement())
+  siteId    Int
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  orderId   Int?
+  order     Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  action    String
+  summary   String
+  actor     String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([siteId, createdAt])
+  @@index([orderId])
 }

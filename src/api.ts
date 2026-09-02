@@ -1,4 +1,5 @@
 import type { AdminBootstrap, FloatingPurchase, MediaAsset, PublicBootstrap, Review, Site, SiteInput, SiteSettings, SiteSettingsUpdateInput, SiteUpdateInput } from '../shared/site';
+import type { CreateOrderInput, Order, OrderListResult, PaymentCreateResult, PaymentSettings, PaymentSettingsInput, ProductSku, ProductSkuInput } from '../shared/order';
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
@@ -165,4 +166,83 @@ export async function uploadAsset(file: File) {
     method: 'POST',
     body: formData,
   });
+}
+
+export async function fetchAdminSkus() {
+  return requestJson<ProductSku[]>('/api/admin/skus');
+}
+
+export async function createSku(input: ProductSkuInput) {
+  return requestJson<ProductSku>('/api/admin/skus', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateSku(id: number, input: ProductSkuInput) {
+  return requestJson<ProductSku>(`/api/admin/skus/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteSku(id: number) {
+  return requestJson<void>(`/api/admin/skus/${id}`, { method: 'DELETE' });
+}
+
+export async function createOrder(input: CreateOrderInput) {
+  return requestJson<PaymentCreateResult>('/api/public/orders', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function queryPublicOrder(orderNo: string, phone: string) {
+  return requestJson<Order>(`/api/public/orders/${encodeURIComponent(orderNo)}?phone=${encodeURIComponent(phone)}`);
+}
+
+export async function fetchAdminOrders(params: URLSearchParams = new URLSearchParams()) {
+  return requestJson<OrderListResult>(`/api/admin/orders?${params.toString()}`);
+}
+
+export async function fetchAdminOrder(id: number) {
+  return requestJson<{ order: Order; timeline: Array<{ id: number; action: string; summary: string; actor: string; createdAt: string }> }>(`/api/admin/orders/${id}`);
+}
+
+export async function shipOrder(id: number, input: { logisticsCompany: string; logisticsNo: string }) {
+  return requestJson<Order>(`/api/admin/orders/${id}/ship`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function markOrderRefunded(id: number, refundNote: string) {
+  return requestJson<Order>(`/api/admin/orders/${id}/refund-mark`, {
+    method: 'POST',
+    body: JSON.stringify({ refundNote }),
+  });
+}
+
+export async function softDeleteOrder(id: number, deletionReason: string) {
+  return requestJson<Order>(`/api/admin/orders/${id}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ deletionReason }),
+  });
+}
+
+export async function fetchPaymentSettings() {
+  return requestJson<PaymentSettings>('/api/admin/payment-settings');
+}
+
+export async function savePaymentSettings(input: PaymentSettingsInput) {
+  return requestJson<PaymentSettings>('/api/admin/payment-settings', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function exportOrders(params: URLSearchParams) {
+  const response = await fetch(`/api/admin/orders/export?${params.toString()}`, { credentials: 'include' });
+  if (!response.ok) throw new Error(await response.text());
+  return response.blob();
 }

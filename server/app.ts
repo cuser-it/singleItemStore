@@ -19,6 +19,7 @@ import {
 } from '../shared/site';
 import { createMemoryStore, type ContentStore } from './store';
 import { createUploadStorageFromEnv, type UploadStorage } from './uploadStorage';
+import { OrderService } from './orders';
 
 export type CreateAppOptions = {
   store?: ContentStore;
@@ -142,11 +143,64 @@ async function listHeroOrDetail(store: ContentStore, section: MediaSection) {
   return sortByOrder(assets.filter((item) => item.enabled)).map((item) => ({ ...item, resolvedUrl: resolveMediaUrl(item.source) }));
 }
 
+function buildSkuInput(body: any) {
+  return {
+    skuCode: String(body.skuCode ?? '').trim(),
+    name: String(body.name ?? '').trim(),
+    subtitle: String(body.subtitle ?? '').trim(),
+    price: String(body.price ?? '').trim(),
+    originalPrice: String(body.originalPrice ?? body.price ?? '').trim(),
+    saleLabel: String(body.saleLabel ?? '券后价').trim(),
+    highlight: body.highlight ? String(body.highlight).trim() : undefined,
+    enabled: toBoolean(body.enabled, true),
+    sortOrder: toNumber(body.sortOrder, 0),
+  };
+}
+
+function buildOrderInput(body: any) {
+  return {
+    skuId: Number(body.skuId),
+    quantity: Number(body.quantity),
+    recipientName: String(body.recipientName ?? '').trim(),
+    phone: String(body.phone ?? '').trim(),
+    address: String(body.address ?? '').trim(),
+    paymentChannel: body.paymentChannel === 'wechat' ? 'wechat' as const : 'alipay' as const,
+    idempotencyKey: body.idempotencyKey ? String(body.idempotencyKey) : undefined,
+  };
+}
+
+function buildOrderFilters(query: any) {
+  return {
+    page: toNumber(query.page, 1),
+    pageSize: toNumber(query.pageSize, 20),
+    query: query.query ? String(query.query) : undefined,
+    paymentStatus: query.paymentStatus ? String(query.paymentStatus) as any : undefined,
+    fulfillmentStatus: query.fulfillmentStatus ? String(query.fulfillmentStatus) as any : undefined,
+    refundStatus: query.refundStatus ? String(query.refundStatus) as any : undefined,
+    deletedStatus: query.deletedStatus ? String(query.deletedStatus) as any : undefined,
+    skuId: query.skuId ? Number(query.skuId) : undefined,
+    startAt: query.startAt ? String(query.startAt) : undefined,
+    endAt: query.endAt ? String(query.endAt) : undefined,
+  };
+}
+
+function buildPaymentSettingsInput(body: any) {
+  return {
+    gatewayUrl: String(body.gatewayUrl ?? '').trim(),
+    merchantId: String(body.merchantId ?? '').trim(),
+    merchantSecret: body.merchantSecret ? String(body.merchantSecret) : undefined,
+    enabledChannels: Array.isArray(body.enabledChannels) ? body.enabledChannels : [],
+    notifyUrl: String(body.notifyUrl ?? '').trim(),
+    returnUrl: String(body.returnUrl ?? '').trim(),
+  };
+}
+
 export async function createApp(options: CreateAppOptions = {}) {
   const store = options.store ?? (process.env.DATABASE_URL ? await import('./prismaStore').then((mod) => mod.createPrismaStore()) : createMemoryStore());
   const adminPassword = options.adminPassword ?? process.env.ADMIN_PASSWORD ?? 'admin123456';
   const uploadDir = options.uploadDir ?? path.resolve(process.cwd(), 'storage', 'img');
   const uploadStorage = createSafeUploadStorage(uploadDir, options.uploadStorage);
+  const orderService = new OrderService(store);
   const sessions = new Map<string, true>();
   const app = express();
 
@@ -160,7 +214,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
 
   app.get('/api/public/bootstrap', async (_req, res) => {
-    res.json(mapBootstrapWithResolvedUrls(await store.getBootstrap()));
+    const bootstrap = mapBootstrapWithResolvedUrls(await store.getBootstrap());
+    res.json({ ...bootstrap, skus: await orderService.listSkus(bootstrap.site.id, true) });
   });
 
   app.get('/api/public/site', async (_req, res) => {
@@ -189,6 +244,50 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/api/public/floating-purchases', async (_req, res) => {
     const bootstrap = await store.getBootstrap();
     res.json(bootstrap.floatingPurchases);
+  });
+
+  app.get('/api/public/skus', async (_req, res) => {
+    res.json(await orderService.listSkus(undefined, true));
+  });
+
+  app.post('/api/public/orders', async (req, res) => {
+    try {
+      res.status(201).json(await orderService.createOrder(buildOrderInput(req.body)));
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : 'order create failed' });
+    }
+  });
+
+  app.get('/api/public/orders/:orderNo', async (req, res) => {
+    try {
+      const order = await orderService.queryPublicOrder(String(req.params.orderNo), String(req.query.phone ?? ''));
+      if (!order) {
+        res.status(404).json({ message: 'not found' });
+        return;
+      }
+      res.json(order);
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : 'order query failed' });
+    }
+  });
+
+  app.get('/api/payment/epay/notify', async (req, res) => {
+    const result = await orderService.handleNotify(req.query as Record<string, string>);
+    res.status(result.ok ? 200 : 400).send(result.ok ? 'success' : 'fail');
+  });
+
+  app.post('/api/payment/epay/notify', async (req, res) => {
+    const result = await orderService.handleNotify(req.body as Record<string, string>);
+    res.status(result.ok ? 200 : 400).send(result.ok ? 'success' : 'fail');
+  });
+
+  app.get('/api/payment/mock-notify/:orderNo', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    try {
+      res.json(orderService.mockNotifyParams(String(req.params.orderNo)));
+    } catch {
+      res.status(404).json({ message: 'not found' });
+    }
   });
 
   app.post('/api/admin/login', async (req, res) => {
@@ -223,6 +322,133 @@ export async function createApp(options: CreateAppOptions = {}) {
     res.json({ authenticated: true });
   });
 
+  app.get('/api/admin/skus', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    res.json(await orderService.listSkus());
+  });
+
+  app.post('/api/admin/skus', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    try {
+      res.status(201).json(await orderService.createSku(buildSkuInput(req.body)));
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : 'sku create failed' });
+    }
+  });
+
+  app.put('/api/admin/skus/:id', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    try {
+      const sku = await orderService.updateSku(Number(req.params.id), buildSkuInput(req.body));
+      if (!sku) {
+        res.status(404).json({ message: 'not found' });
+        return;
+      }
+      res.json(sku);
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : 'sku update failed' });
+    }
+  });
+
+  app.delete('/api/admin/skus/:id', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    res.status(await orderService.disableSku(Number(req.params.id)) ? 204 : 404).end();
+  });
+
+  app.get('/api/admin/orders/events', (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    res.write(': connected\\n\\n');
+    orderService.addClient(res);
+  });
+
+  app.get('/api/admin/orders/export', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    try {
+      const columns = String(req.query.columns ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+      const csv = orderService.exportOrders(buildOrderFilters(req.query), columns);
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=utf-8');
+      res.header('Content-Disposition', 'attachment; filename="orders.xlsx"');
+      res.send(csv);
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : 'export failed' });
+    }
+  });
+
+  app.get('/api/admin/orders', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    res.json(await orderService.listOrders(buildOrderFilters(req.query)));
+  });
+
+  app.get('/api/admin/orders/:id', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    const order = await orderService.getOrder(Number(req.params.id));
+    if (!order) {
+      res.status(404).json({ message: 'not found' });
+      return;
+    }
+    res.json({ order, timeline: await orderService.getOrderTimeline(order.id) });
+  });
+
+  app.post('/api/admin/orders/:id/ship', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    try {
+      const order = await orderService.shipOrder(Number(req.params.id), String(req.body?.logisticsCompany ?? ''), String(req.body?.logisticsNo ?? ''));
+      if (!order) {
+        res.status(404).json({ message: 'not found' });
+        return;
+      }
+      res.json(order);
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : 'ship failed' });
+    }
+  });
+
+  app.post('/api/admin/orders/:id/refund-mark', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    try {
+      const order = await orderService.markRefunded(Number(req.params.id), String(req.body?.refundNote ?? ''));
+      if (!order) {
+        res.status(404).json({ message: 'not found' });
+        return;
+      }
+      res.json(order);
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : 'refund mark failed' });
+    }
+  });
+
+  app.delete('/api/admin/orders/:id', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    try {
+      const order = await orderService.deleteOrder(Number(req.params.id), String(req.body?.deletionReason ?? req.query.deletionReason ?? ''));
+      if (!order) {
+        res.status(404).json({ message: 'not found' });
+        return;
+      }
+      res.json(order);
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : 'delete failed' });
+    }
+  });
+
+  app.get('/api/admin/payment-settings', (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    res.json(orderService.getPaymentSettings());
+  });
+
+  app.put('/api/admin/payment-settings', (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    try {
+      res.json(orderService.updatePaymentSettings(buildPaymentSettingsInput(req.body)));
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : 'payment settings failed' });
+    }
+  });
   app.get('/api/admin/bootstrap', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     res.json(await store.getAdminBootstrap());

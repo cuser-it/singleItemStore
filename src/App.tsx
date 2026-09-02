@@ -23,6 +23,7 @@ import {
   Tag,
   Typography,
   Upload,
+  Checkbox,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -50,6 +51,7 @@ import {
   type SiteSettings,
   type SiteSettingsUpdateInput,
 } from '../shared/site';
+import type { Order, PaymentSettings, ProductSku, ProductSkuInput } from '../shared/order';
 import {
   activateSite,
   createFloatingPurchase,
@@ -71,6 +73,19 @@ import {
   updateReview,
   updateSite,
   uploadAsset,
+  createSku,
+  updateSku,
+  deleteSku,
+  createOrder,
+  queryPublicOrder,
+  fetchAdminSkus,
+  fetchAdminOrders,
+  fetchPaymentSettings,
+  savePaymentSettings,
+  shipOrder,
+  markOrderRefunded,
+  softDeleteOrder,
+  exportOrders,
 } from './api';
 
 function usePathname() {
@@ -179,6 +194,9 @@ function PublicApp() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [toast, setToast] = useState('');
   const [purchaseIndex, setPurchaseIndex] = useState(0);
+  const [queryOrderNo, setQueryOrderNo] = useState('');
+  const [queryPhone, setQueryPhone] = useState('');
+  const [queriedOrder, setQueriedOrder] = useState<Order | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -275,7 +293,45 @@ function PublicApp() {
   const latestItems = floatingPurchases.slice(0, 8);
   const floatingItem = latestItems[purchaseIndex % latestItems.length] ?? null;
 
-  const showToast = (message = '已为演示页面保留下单样式，未提交任何接口') => setToast(message);
+  const showToast = (message = '订单操作完成') => setToast(message);
+
+  const handleCheckoutSubmit = async () => {
+    const sku = bootstrap.skus?.find((item) => item.skuCode === selectedSku.id);
+    if (!sku) {
+      showToast('当前规格暂不可下单');
+      return;
+    }
+    const recipientName = (document.getElementById('checkoutName') as HTMLInputElement | null)?.value.trim() ?? '';
+    const phone = (document.getElementById('checkoutPhone') as HTMLInputElement | null)?.value.trim() ?? '';
+    const address = (document.getElementById('checkoutAddress') as HTMLTextAreaElement | null)?.value.trim() ?? '';
+    try {
+      const result = await createOrder({
+        skuId: sku.id,
+        quantity,
+        recipientName,
+        phone,
+        address,
+        paymentChannel: checkoutPayment,
+        idempotencyKey: `${phone}-${sku.id}-${quantity}`,
+      });
+      setCheckoutOpen(false);
+      showToast(`订单 ${result.order.orderNo} 已创建，正在打开支付`);
+      window.open(result.paymentUrl, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '订单提交失败');
+    }
+  };
+
+  const handlePublicOrderQuery = async () => {
+    try {
+      const order = await queryPublicOrder(queryOrderNo, queryPhone);
+      setQueriedOrder(order);
+      showToast('订单查询成功');
+    } catch (error) {
+      setQueriedOrder(null);
+      showToast(error instanceof Error ? error.message : '订单查询失败');
+    }
+  };
 
   return (
     <div className="store-page">
@@ -372,6 +428,16 @@ function PublicApp() {
             </ul>
           </div>
         </section>
+
+        <section className="card pad order-query-card">
+          <div className="buy-title">订单查询</div>
+          <div className="order-query-form">
+            <input value={queryOrderNo} onChange={(event) => setQueryOrderNo(event.target.value)} placeholder="订单号" />
+            <input value={queryPhone} onChange={(event) => setQueryPhone(event.target.value)} inputMode="tel" maxLength={11} placeholder="收货手机号" />
+            <button type="button" onClick={() => void handlePublicOrderQuery()}>查询</button>
+          </div>
+          {queriedOrder ? <div className="order-query-result"><b>{queriedOrder.orderNo}</b><span>{queriedOrder.paymentStatus} / {queriedOrder.fulfillmentStatus}</span><span>{queriedOrder.logisticsNo ? `${queriedOrder.logisticsCompany ?? ''} ${queriedOrder.logisticsNo}` : '待发货'}</span><span>{queriedOrder.recipientName} {queriedOrder.phone}</span><span>{queriedOrder.address}</span></div> : null}
+        </section>
       </main>
 
       <div className="purchase-feed" aria-live="polite">
@@ -465,8 +531,7 @@ function PublicApp() {
             className="checkout-submit"
             type="button"
             onClick={() => {
-              showToast(checkoutPayment === 'alipay' ? '已选择支付宝支付，订单已进入演示提交流程' : '已选择微信支付，订单已进入演示提交流程');
-              setCheckoutOpen(false);
+              void handleCheckoutSubmit();
             }}
           >
             提交订单
@@ -517,6 +582,20 @@ type SiteDraft = {
   slug: string;
   templateSiteId?: number;
 };
+
+type SkuDraft = ProductSkuInput & { id?: number };
+
+const emptySkuDraft: SkuDraft = {
+  skuCode: '',
+  name: '',
+  subtitle: '',
+  price: '0.00',
+  originalPrice: '0.00',
+  saleLabel: '券后价',
+  highlight: '',
+  enabled: true,
+  sortOrder: 0,
+};
 function isPcUserAgent() {
   const userAgent = navigator.userAgent.toLowerCase();
   return !/android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(userAgent);
@@ -551,7 +630,7 @@ function AdminApp() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [activePage, setActivePage] = useState('dashboard');
   const [loading, setLoading] = useState(false);
-  const [drawer, setDrawer] = useState<'settings' | 'site' | 'media' | 'review' | 'purchase' | null>(null);
+  const [drawer, setDrawer] = useState<'settings' | 'site' | 'media' | 'review' | 'purchase' | 'sku' | 'payment' | null>(null);
   const [siteDraft, setSiteDraft] = useState<SiteDraft>({ name: '', slug: '', templateSiteId: undefined });
   const [mediaDraft, setMediaDraft] = useState<MediaDraft>({ section: 'hero', sourceType: 'url', source: '', alt: '', sortOrder: 1, enabled: true });
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ name: '', content: '', images: '', featuredOnHome: false, homeOrder: 0, enabled: true });
@@ -564,16 +643,39 @@ function AdminApp() {
   const [selectedReviewIds, setSelectedReviewIds] = useState<number[]>([]);
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
   const [selectedPurchaseIds, setSelectedPurchaseIds] = useState<number[]>([]);
+  const [skus, setSkus] = useState<ProductSku[]>([]);
+  const [skuDraft, setSkuDraft] = useState<SkuDraft>(emptySkuDraft);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [orderTotal, setOrderTotal] = useState(0);
+  const [orderQuery, setOrderQuery] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
+  const [fulfillmentStatusFilter, setFulfillmentStatusFilter] = useState('all');
+  const [deletedStatusFilter, setDeletedStatusFilter] = useState('active');
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings | null>(null);
   const { Title, Text } = Typography;
   const { message, modal } = AntApp.useApp();
   const { Header, Sider, Content } = Layout;
 
+  const buildOrderParams = () => {
+    const params = new URLSearchParams();
+    params.set('pageSize', '50');
+    if (orderQuery.trim()) params.set('query', orderQuery.trim());
+    if (paymentStatusFilter !== 'all') params.set('paymentStatus', paymentStatusFilter);
+    if (fulfillmentStatusFilter !== 'all') params.set('fulfillmentStatus', fulfillmentStatusFilter);
+    if (deletedStatusFilter !== 'active') params.set('deletedStatus', deletedStatusFilter);
+    return params;
+  };
+
   const refresh = async () => {
     setLoading(true);
     try {
-      const data = await fetchAdminBootstrap();
+      const [data, skuData, orderData, payData] = await Promise.all([fetchAdminBootstrap(), fetchAdminSkus(), fetchAdminOrders(buildOrderParams()), fetchPaymentSettings()]);
       setBootstrap(data);
       setSettings(data.settings);
+      setSkus(skuData);
+      setOrders(orderData.items);
+      setOrderTotal(orderData.total);
+      setPaymentSettings(payData);
     } finally {
       setLoading(false);
     }
@@ -608,6 +710,11 @@ function AdminApp() {
     setPurchaseDraft(item ? { id: item.id, content: item.content, enabled: item.enabled, sortOrder: item.sortOrder } : { content: '', enabled: true, sortOrder: (bootstrap?.floatingPurchases.length ?? 0) + 1 });
     setDrawer('purchase');
   };
+  const openSku = (item?: ProductSku) => {
+    setSkuDraft(item ? { skuCode: item.skuCode, name: item.name, subtitle: item.subtitle, price: item.price, originalPrice: item.originalPrice, saleLabel: item.saleLabel, highlight: item.highlight ?? '', enabled: item.enabled, sortOrder: item.sortOrder, id: item.id } : { ...emptySkuDraft, sortOrder: skus.length + 1 });
+    setDrawer('sku');
+  };
+  const openPaymentSettings = () => setDrawer('payment');
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -725,6 +832,85 @@ function AdminApp() {
       message.error('浮层文案保存失败');
     }
   };
+  const handleSkuSave = async () => {
+    try {
+      if (skuDraft.id) await updateSku(skuDraft.id, skuDraft); else await createSku(skuDraft);
+      closeDrawer();
+      await refresh();
+      message.success(skuDraft.id ? '规格已保存' : '规格已新增');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '规格保存失败');
+    }
+  };
+  const handlePaymentSettingsSave = async (values: any) => {
+    if (!paymentSettings) return;
+    try {
+      await savePaymentSettings({
+        gatewayUrl: values.gatewayUrl,
+        merchantId: values.merchantId,
+        merchantSecret: values.merchantSecret,
+        enabledChannels: values.enabledChannels ?? [],
+        notifyUrl: values.notifyUrl,
+        returnUrl: values.returnUrl,
+      });
+      closeDrawer();
+      await refresh();
+      message.success('支付配置已保存');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '支付配置保存失败');
+    }
+  };
+  const handleShipOrder = async (order: Order) => {
+    const logisticsCompany = window.prompt('物流公司', order.logisticsCompany ?? '');
+    if (!logisticsCompany) return;
+    const logisticsNo = window.prompt('物流单号', order.logisticsNo ?? '');
+    if (!logisticsNo) return;
+    try {
+      await shipOrder(order.id, { logisticsCompany, logisticsNo });
+      await refresh();
+      message.success('已发货并完成');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '发货失败');
+    }
+  };
+  const handleRefundOrder = async (order: Order) => {
+    const refundNote = window.prompt(`请输入订单 ${order.orderNo} 的退款备注`);
+    if (!refundNote) return;
+    try {
+      await markOrderRefunded(order.id, refundNote);
+      await refresh();
+      message.success('已标记退款');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '退款标记失败');
+    }
+  };
+  const handleSoftDeleteOrder = async (order: Order) => {
+    const deletionReason = window.prompt(`删除订单 ${order.orderNo} 需要填写原因`);
+    if (!deletionReason) return;
+    try {
+      await softDeleteOrder(order.id, deletionReason);
+      await refresh();
+      message.success('订单已软删除');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '删除失败');
+    }
+  };
+  const handleExportOrders = async () => {
+    try {
+      const params = buildOrderParams();
+      params.set('columns', 'orderNo,recipientName,phone,address,skuName,quantity,totalAmount,paymentStatus,fulfillmentStatus,logisticsCompany,logisticsNo,createdAt');
+      const blob = await exportOrders(params);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'orders.xlsx';
+      link.click();
+      URL.revokeObjectURL(url);
+      message.success('订单导出已生成');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '导出失败');
+    }
+  };
   const clearBatchSelections = () => {
     setSelectedReviewIds([]);
     setSelectedMediaIds([]);
@@ -809,6 +995,9 @@ function AdminApp() {
   });
   const navItems = [
     { key: 'dashboard', icon: <AppstoreOutlined />, label: '控制台' },
+    { key: 'orders', icon: <FormOutlined />, label: '订单管理' },
+    { key: 'skus', icon: <TagsOutlined />, label: '商品规格' },
+    { key: 'payment', icon: <SettingOutlined />, label: '支付配置' },
     { key: 'settings', icon: <SettingOutlined />, label: '站点管理' },
     { key: 'media', icon: <FileImageOutlined />, label: '图片管理' },
     { key: 'reviews', icon: <FormOutlined />, label: '评价管理' },
@@ -825,6 +1014,10 @@ function AdminApp() {
   const mediaForm = <Form layout="vertical" onFinish={handleMediaSave}><Row gutter={20}><Col span={12}><Form.Item label="区域"><Select value={mediaDraft.section} onChange={(section) => setMediaDraft({ ...mediaDraft, section })} options={[{ value: 'hero', label: '首页轮播' }, { value: 'detail', label: '详情图片' }]} /></Form.Item></Col><Col span={12}><Form.Item label="来源类型"><Select value={mediaDraft.sourceType} onChange={(sourceType) => setMediaDraft({ ...mediaDraft, sourceType })} options={[{ value: 'url', label: 'URL' }, { value: 'upload', label: '上传' }]} /></Form.Item></Col><Col span={24}><Form.Item label="图片地址"><Input value={mediaDraft.source} onChange={(event) => setMediaDraft({ ...mediaDraft, source: event.target.value })} placeholder="https://... 或 /img/..." /></Form.Item></Col><Col span={24}><Form.Item label="上传文件"><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1}><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item></Col><Col span={12}><Form.Item label="替代文本"><Input value={mediaDraft.alt} onChange={(event) => setMediaDraft({ ...mediaDraft, alt: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="排序"><Input type="number" value={mediaDraft.sortOrder} onChange={(event) => setMediaDraft({ ...mediaDraft, sortOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={24}><Space><Switch checked={mediaDraft.enabled} onChange={(enabled) => setMediaDraft({ ...mediaDraft, enabled })} />启用</Space></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{mediaDraft.id ? '保存修改' : '新增图片'}</Button></Space></Form>;
   const reviewForm = <Form layout="vertical" onFinish={handleReviewSave}><Form.Item label="用户名"><Input value={reviewDraft.name} onChange={(event) => setReviewDraft({ ...reviewDraft, name: event.target.value })} /></Form.Item><Form.Item label="内容"><Input.TextArea rows={4} value={reviewDraft.content} onChange={(event) => setReviewDraft({ ...reviewDraft, content: event.target.value })} /></Form.Item><Form.Item label="图片地址，每行一个"><Input.TextArea rows={3} value={reviewDraft.images} onChange={(event) => setReviewDraft({ ...reviewDraft, images: event.target.value })} /></Form.Item><Form.Item label="上传评价图片"><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1}><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item><Row gutter={20}><Col span={12}><Form.Item label="排序"><Input type="number" value={reviewDraft.homeOrder} onChange={(event) => setReviewDraft({ ...reviewDraft, homeOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={12}><Form.Item label="首页展示"><Switch checked={reviewDraft.featuredOnHome} onChange={(featuredOnHome) => setReviewDraft({ ...reviewDraft, featuredOnHome })} /></Form.Item></Col><Col span={12}><Form.Item label="启用"><Switch checked={reviewDraft.enabled} onChange={(enabled) => setReviewDraft({ ...reviewDraft, enabled })} /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{reviewDraft.id ? '保存修改' : '新增评价'}</Button></Space></Form>;
   const purchaseForm = <Form layout="vertical" onFinish={handlePurchaseSave}><Form.Item label="文案"><Input value={purchaseDraft.content} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, content: event.target.value })} /></Form.Item><Form.Item label="排序"><Input type="number" value={purchaseDraft.sortOrder} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, sortOrder: Number(event.target.value) })} /></Form.Item><Form.Item label="启用"><Switch checked={purchaseDraft.enabled} onChange={(enabled) => setPurchaseDraft({ ...purchaseDraft, enabled })} /></Form.Item><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{purchaseDraft.id ? '保存修改' : '新增文案'}</Button></Space></Form>;
+  const skuForm = <Form layout="vertical" onFinish={handleSkuSave}><Row gutter={20}><Col span={12}><Form.Item label="规格编码" required><Input value={skuDraft.skuCode} onChange={(event) => setSkuDraft({ ...skuDraft, skuCode: event.target.value })} placeholder="single" /></Form.Item></Col><Col span={12}><Form.Item label="规格名称" required><Input value={skuDraft.name} onChange={(event) => setSkuDraft({ ...skuDraft, name: event.target.value })} /></Form.Item></Col><Col span={24}><Form.Item label="副标题"><Input value={skuDraft.subtitle} onChange={(event) => setSkuDraft({ ...skuDraft, subtitle: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="售价"><Input value={skuDraft.price} onChange={(event) => setSkuDraft({ ...skuDraft, price: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="原价"><Input value={skuDraft.originalPrice} onChange={(event) => setSkuDraft({ ...skuDraft, originalPrice: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="价格标签"><Input value={skuDraft.saleLabel} onChange={(event) => setSkuDraft({ ...skuDraft, saleLabel: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="高亮"><Input value={skuDraft.highlight} onChange={(event) => setSkuDraft({ ...skuDraft, highlight: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="排序"><Input type="number" value={skuDraft.sortOrder} onChange={(event) => setSkuDraft({ ...skuDraft, sortOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={12}><Form.Item label="启用"><Switch checked={skuDraft.enabled} onChange={(enabled) => setSkuDraft({ ...skuDraft, enabled })} /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{skuDraft.id ? '保存规格' : '新增规格'}</Button></Space></Form>;
+  const paymentForm = paymentSettings ? <Form layout="vertical" initialValues={{ ...paymentSettings, merchantSecret: '' }} onFinish={handlePaymentSettingsSave}><Form.Item name="gatewayUrl" label="网关地址" required><Input /></Form.Item><Form.Item name="merchantId" label="商户号" required><Input /></Form.Item><Form.Item name="merchantSecret" label={`商户密钥（当前 ${paymentSettings.secretMasked || '未设置'}）`}><Input.Password placeholder="留空则不修改" /></Form.Item><Form.Item name="enabledChannels" label="启用渠道"><Checkbox.Group options={[{ label: '支付宝', value: 'alipay' }, { label: '微信', value: 'wechat' }]} /></Form.Item><Form.Item name="notifyUrl" label="回调地址" required><Input /></Form.Item><Form.Item name="returnUrl" label="返回地址" required><Input /></Form.Item><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">保存支付配置</Button></Space></Form> : null;
+  const skuColumns: ColumnsType<ProductSku> = [{ title: '编码', dataIndex: 'skuCode' }, { title: '规格', dataIndex: 'name' }, { title: '售价', dataIndex: 'price', render: (value: string) => `¥${value}` }, { title: '原价', dataIndex: 'originalPrice', render: (value: string) => `¥${value}` }, { title: '排序', dataIndex: 'sortOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'success' : 'default'}>{enabled ? '启用' : '停用'}</Tag> }, { title: '操作', key: 'action', render: (_: unknown, item: ProductSku) => <Space><Button type="link" onClick={() => openSku(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('规格', async () => { await deleteSku(item.id); })} disabled={!item.enabled}>停用</Button></Space> }];
+  const orderColumns: ColumnsType<Order> = [{ title: '订单号', dataIndex: 'orderNo' }, { title: '姓名', dataIndex: 'recipientName' }, { title: '手机号', dataIndex: 'phone' }, { title: '规格', dataIndex: 'skuName' }, { title: '数量', dataIndex: 'quantity' }, { title: '金额', dataIndex: 'totalAmount', render: (value: string) => `¥${value}` }, { title: '支付', dataIndex: 'paymentStatus', render: (value: string) => <Tag color={value === 'PAID' ? 'green' : value === 'REFUNDED' ? 'purple' : 'orange'}>{value}</Tag> }, { title: '履约', dataIndex: 'fulfillmentStatus', render: (value: string) => <Tag color={value === 'SHIPPED' ? 'blue' : 'default'}>{value}</Tag> }, { title: '物流', render: (_: unknown, item: Order) => item.logisticsNo ? `${item.logisticsCompany ?? ''} ${item.logisticsNo}` : '-' }, { title: '创建时间', dataIndex: 'createdAt', render: (value: string) => new Date(value).toLocaleString('zh-CN') }, { title: '操作', key: 'action', render: (_: unknown, item: Order) => <Space><Button type="link" onClick={() => modal.info({ title: item.orderNo, width: 720, content: <Descriptions column={1} bordered size="small"><Descriptions.Item label="商品">{item.productName}</Descriptions.Item><Descriptions.Item label="规格">{item.skuName}</Descriptions.Item><Descriptions.Item label="收货人">{item.recipientName}</Descriptions.Item><Descriptions.Item label="手机号">{item.phone}</Descriptions.Item><Descriptions.Item label="地址">{item.address}</Descriptions.Item><Descriptions.Item label="金额">¥{item.totalAmount}</Descriptions.Item><Descriptions.Item label="物流">{item.logisticsNo ? `${item.logisticsCompany ?? ''} ${item.logisticsNo}` : '-'}</Descriptions.Item><Descriptions.Item label="退款备注">{item.refundNote ?? '-'}</Descriptions.Item></Descriptions> })}>详情</Button><Button type="link" onClick={() => void handleShipOrder(item)} disabled={item.fulfillmentStatus === 'SHIPPED' || Boolean(item.deletedAt)}>发货并完成</Button><Button type="link" onClick={() => void handleRefundOrder(item)} disabled={Boolean(item.refundedAt) || Boolean(item.deletedAt)}>标记退款</Button><Button type="link" danger onClick={() => void handleSoftDeleteOrder(item)} disabled={Boolean(item.deletedAt)}>删除</Button></Space> }];
   const siteColumns: ColumnsType<Site> = [{ title: '站点', dataIndex: 'name', render: (name: string, site: Site) => <Space><Tag color={site.isActive ? 'green' : 'default'}>{site.isActive ? '当前' : '站点'}</Tag>{name}</Space> }, { title: '标识', dataIndex: 'slug' }, { title: '创建时间', dataIndex: 'createdAt', render: (value: string) => new Date(value).toLocaleString() }, { title: '操作', key: 'action', render: (_: unknown, site: Site) => <Space><Button type="link" onClick={() => handleActivateSite(site)} disabled={site.isActive}>切换</Button><Button type="link" icon={<EditOutlined />} onClick={() => openSite(site)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('站点', async () => { await deleteSite(site.id); })} disabled={site.isActive}>删除</Button></Space> }];
   const reviewColumns: ColumnsType<Review> = [{ title: '用户', dataIndex: 'name', key: 'name', render: (name: string) => <Space><Tag color="blue">{name.slice(0, 1)}</Tag>{name}</Space> }, { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true }, { title: '图片', dataIndex: 'images', key: 'images', render: (images: string[]) => images[0] ? <img className="admin-table-thumb" src={images[0]} alt="评价图片" /> : <Text type="secondary">无图片</Text> }, { title: '首页展示', dataIndex: 'featuredOnHome', render: (value: boolean, item: Review) => <Switch size="small" checked={value} onChange={async (featuredOnHome) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '排序', dataIndex: 'homeOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean, item: Review) => <Switch size="small" checked={enabled} onChange={async (nextEnabled) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: nextEnabled }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '操作', key: 'action', render: (_: unknown, item: Review) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => openReview(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('评价', async () => { await deleteReview(item.id); })}>删除</Button></Space> }];
   const mediaColumns: ColumnsType<MediaAsset> = [{ title: '预览', dataIndex: 'resolvedUrl', render: (url: string, item: MediaAsset) => url ? <img className="admin-table-thumb" src={url} alt={item.alt} /> : <Text type="secondary">无图片</Text> }, { title: '区域', dataIndex: 'section', render: (section: string) => section === 'hero' ? '首页轮播' : '详情图片' }, { title: '地址', dataIndex: 'resolvedUrl', ellipsis: true }, { title: '排序', dataIndex: 'sortOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'success' : 'default'}>{enabled ? '启用' : '禁用'}</Tag> }, { title: '操作', key: 'action', render: (_: unknown, item: MediaAsset) => <Space><Button type="link" onClick={() => openMedia(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('图片', async () => { await deleteMediaAsset(item.id); })}>删除</Button></Space> }];
@@ -910,6 +1103,64 @@ function AdminApp() {
           </Card>
         </Col>
       </Row>
+    </>
+  ) : activePage === 'orders' ? (
+    <>
+      <div className="admin-page-heading">
+        <div>
+          <Title level={2}>订单管理</Title>
+          <Text type="secondary">按订单号、手机号、支付、履约和删除状态筛选订单。</Text>
+        </div>
+        <Space>
+          <Button onClick={() => void refresh()}>刷新</Button>
+          <Button type="primary" onClick={() => void handleExportOrders()}>导出 XLSX</Button>
+        </Space>
+      </div>
+      <Card className="admin-filter-card">
+        <Space wrap>
+          <Input.Search value={orderQuery} onChange={(event) => setOrderQuery(event.target.value)} onSearch={() => void refresh()} placeholder="订单号 / 手机号 / 姓名" allowClear />
+          <Select value={paymentStatusFilter} onChange={setPaymentStatusFilter} options={[{ value: 'all', label: '全部支付' }, { value: 'PAYING', label: '支付中' }, { value: 'PAID', label: '已支付' }, { value: 'REFUNDED', label: '已退款' }]} />
+          <Select value={fulfillmentStatusFilter} onChange={setFulfillmentStatusFilter} options={[{ value: 'all', label: '全部履约' }, { value: 'WAIT_SHIP', label: '待发货' }, { value: 'SHIPPED', label: '已发货' }]} />
+          <Select value={deletedStatusFilter} onChange={setDeletedStatusFilter} options={[{ value: 'active', label: '未删除' }, { value: 'deleted', label: '已删除' }, { value: 'all', label: '全部订单' }]} />
+          <Button onClick={() => void refresh()}>应用筛选</Button>
+        </Space>
+      </Card>
+      <Card className="admin-content-card" title={`共 ${orderTotal} 笔订单`}>
+        <Table rowKey="id" columns={orderColumns} dataSource={orders} loading={loading} pagination={{ pageSize: 10 }} scroll={{ x: 1300 }} />
+      </Card>
+    </>
+  ) : activePage === 'skus' ? (
+    <>
+      <div className="admin-page-heading">
+        <div>
+          <Title level={2}>商品规格</Title>
+          <Text type="secondary">规格作为 SKU 管理，订单会保存下单时的价格和名称快照。</Text>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => openSku()}>新增规格</Button>
+      </div>
+      <Card className="admin-content-card">
+        <Table rowKey="id" columns={skuColumns} dataSource={skus} loading={loading} pagination={false} />
+      </Card>
+    </>
+  ) : activePage === 'payment' ? (
+    <>
+      <div className="admin-page-heading">
+        <div>
+          <Title level={2}>支付配置</Title>
+          <Text type="secondary">仅管理易支付网关、商户号、渠道和回调地址；数据库连接由部署环境提供。</Text>
+        </div>
+        <Button type="primary" onClick={openPaymentSettings}>编辑支付配置</Button>
+      </div>
+      <Card className="admin-content-card">
+        <Descriptions column={1}>
+          <Descriptions.Item label="网关地址">{paymentSettings?.gatewayUrl}</Descriptions.Item>
+          <Descriptions.Item label="商户号">{paymentSettings?.merchantId}</Descriptions.Item>
+          <Descriptions.Item label="商户密钥">{paymentSettings?.secretMasked || '未设置'}</Descriptions.Item>
+          <Descriptions.Item label="启用渠道">{paymentSettings?.enabledChannels.join(', ')}</Descriptions.Item>
+          <Descriptions.Item label="回调地址">{paymentSettings?.notifyUrl}</Descriptions.Item>
+          <Descriptions.Item label="返回地址">{paymentSettings?.returnUrl}</Descriptions.Item>
+        </Descriptions>
+      </Card>
     </>
   ) : activePage === 'settings' ? (
     <>
@@ -1018,7 +1269,9 @@ function AdminApp() {
       </Card>
     </>
   );
-  return <Layout className="antd-admin-layout"><Sider theme="light" width={260} breakpoint="lg" collapsedWidth={80}><div className="antd-admin-brand"><div className="antd-admin-logo"><TagsOutlined /></div><div><strong>管理系统</strong><span>多站点后台</span></div></div><Menu mode="inline" selectedKeys={[activePage]} items={navItems} onClick={({ key }) => setActivePage(key)} /><div className="antd-admin-account"><Tag color="blue">A</Tag><div><strong>管理员</strong><span>{bootstrap?.site.name ?? 'System Admin'}</span></div></div></Sider><Layout><Header className="antd-admin-header"><Space><Title level={4}>管理中心</Title>{bootstrap ? <Select className="admin-site-switch" value={bootstrap.activeSiteId} onChange={(id) => { const site = bootstrap.sites.find((item) => item.id === id); if (site) void handleActivateSite(site); }} options={bootstrap.sites.map((site) => ({ value: site.id, label: site.name }))} /> : null}</Space><Space><Button type="text" icon={<BellOutlined />} aria-label="通知" /><Button type="text" icon={<QuestionCircleOutlined />} aria-label="帮助" /><Button type="link" icon={<LogoutOutlined />} onClick={handleLogout}>退出登录</Button></Space></Header><Content className="antd-admin-content">{loading && !bootstrap ? <Spin size="large" /> : content}</Content></Layout><Drawer title={drawer === 'settings' ? '编辑站点配置' : drawer === 'site' ? (siteDraft.id ? '编辑站点' : '新建站点') : drawer === 'media' ? '编辑图片资源' : drawer === 'review' ? '编辑评价' : '编辑浮层文案'} open={Boolean(drawer)} onClose={closeDrawer} width={drawer === 'settings' ? 720 : 560} destroyOnClose>{drawer === 'settings' ? settingsForm : drawer === 'site' ? siteForm : drawer === 'media' ? mediaForm : drawer === 'review' ? reviewForm : purchaseForm}</Drawer></Layout>;
+  const drawerTitle = drawer === 'settings' ? '编辑站点配置' : drawer === 'site' ? (siteDraft.id ? '编辑站点' : '新建站点') : drawer === 'media' ? '编辑图片资源' : drawer === 'review' ? '编辑评价' : drawer === 'sku' ? (skuDraft.id ? '编辑规格' : '新增规格') : drawer === 'payment' ? '支付配置' : '编辑浮层文案';
+  const drawerContent = drawer === 'settings' ? settingsForm : drawer === 'site' ? siteForm : drawer === 'media' ? mediaForm : drawer === 'review' ? reviewForm : drawer === 'sku' ? skuForm : drawer === 'payment' ? paymentForm : purchaseForm;
+  return <Layout className="antd-admin-layout"><Sider theme="light" width={260} breakpoint="lg" collapsedWidth={80}><div className="antd-admin-brand"><div className="antd-admin-logo"><TagsOutlined /></div><div><strong>管理系统</strong><span>多站点后台</span></div></div><Menu mode="inline" selectedKeys={[activePage]} items={navItems} onClick={({ key }) => setActivePage(key)} /><div className="antd-admin-account"><Tag color="blue">A</Tag><div><strong>管理员</strong><span>{bootstrap?.site.name ?? 'System Admin'}</span></div></div></Sider><Layout><Header className="antd-admin-header"><Space><Title level={4}>管理中心</Title>{bootstrap ? <Select className="admin-site-switch" value={bootstrap.activeSiteId} onChange={(id) => { const site = bootstrap.sites.find((item) => item.id === id); if (site) void handleActivateSite(site); }} options={bootstrap.sites.map((site) => ({ value: site.id, label: site.name }))} /> : null}</Space><Space><Button type="text" icon={<BellOutlined />} aria-label="通知" /><Button type="text" icon={<QuestionCircleOutlined />} aria-label="帮助" /><Button type="link" icon={<LogoutOutlined />} onClick={handleLogout}>退出登录</Button></Space></Header><Content className="antd-admin-content">{loading && !bootstrap ? <Spin size="large" /> : content}</Content></Layout><Drawer title={drawerTitle} open={Boolean(drawer)} onClose={closeDrawer} width={drawer === 'settings' || drawer === 'payment' ? 720 : 560} destroyOnClose>{drawerContent}</Drawer></Layout>;
 }
 
 export function App() {

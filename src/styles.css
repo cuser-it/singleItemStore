@@ -1616,3 +1616,10 @@ img {
     grid-template-columns: 1fr;
   }
 }
+
+.order-query-card .buy-title { padding: 0 0 10px; }
+.order-query-form { display: grid; grid-template-columns: 1fr 1fr 72px; gap: 8px; }
+.order-query-form input { min-width: 0; border: 1px solid #dedede; border-radius: 4px; padding: 8px; font-size: 13px; }
+.order-query-form button { border-radius: 4px; background: #202020; color: #fff; cursor: pointer; }
+.order-query-result { display: grid; gap: 3px; margin-top: 10px; color: #555; font-size: 13px; }
+.order-query-result b { color: #222; }
