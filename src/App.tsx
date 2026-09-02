@@ -722,6 +722,7 @@ function AdminApp() {
     }
   };
   const confirmDelete = (title: string, action: () => Promise<void>) => {
+    console.log(`[admin delete] ${title} clicked`);
     Modal.confirm({
       title: `确定删除${title}吗？`,
       content: '删除后无法恢复，请确认当前操作。',
@@ -730,6 +731,7 @@ function AdminApp() {
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
+          console.log(`[admin delete] ${title} confirmed`);
           await action();
           await refresh();
           message.success(`${title}已删除`);
