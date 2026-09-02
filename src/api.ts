@@ -1,4 +1,4 @@
-import { defaultBootstrap, type FloatingPurchase, type MediaAsset, type PublicBootstrap, type Review, type SiteSettings, type SiteSettingsUpdateInput } from '../shared/site';
+import type { FloatingPurchase, MediaAsset, PublicBootstrap, Review, SiteSettings, SiteSettingsUpdateInput } from '../shared/site';
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
@@ -22,11 +22,7 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
 }
 
 export async function fetchPublicBootstrap() {
-  try {
-    return await requestJson<PublicBootstrap>('/api/public/bootstrap');
-  } catch {
-    return defaultBootstrap;
-  }
+  return requestJson<PublicBootstrap>('/api/public/bootstrap');
 }
 
 export async function fetchAdminBootstrap() {

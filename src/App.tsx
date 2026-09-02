@@ -40,7 +40,6 @@ import {
   UploadOutlined,
 } from '@ant-design/icons';
 import {
-  defaultBootstrap,
   type FloatingPurchase,
   type MediaAsset,
   type MediaSection,
@@ -161,13 +160,14 @@ function PriceBanner({ sku }: { sku: ProductVariant }) {
 }
 
 function titleText(settings: SiteSettings) {
-  return settings.title || defaultBootstrap.settings.title;
+  return settings.title || settings.shopName;
 }
 
 function PublicApp() {
-  const [bootstrap, setBootstrap] = useState<PublicBootstrap>(defaultBootstrap);
+  const [bootstrap, setBootstrap] = useState<PublicBootstrap | null>(null);
+  const [loadError, setLoadError] = useState('');
   const [slide, setSlide] = useState(0);
-  const [selectedSkuId, setSelectedSkuId] = useState(defaultBootstrap.settings.productVariants[0]?.id ?? 'single');
+  const [selectedSkuId, setSelectedSkuId] = useState('single');
   const [quantity, setQuantity] = useState(1);
   const [checkoutPayment, setCheckoutPayment] = useState<'wechat' | 'alipay'>('wechat');
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -177,28 +177,32 @@ function PublicApp() {
 
   useEffect(() => {
     let active = true;
-    fetchPublicBootstrap().then((data) => {
-      if (active) {
+    fetchPublicBootstrap()
+      .then((data) => {
+        if (!active) return;
         setBootstrap(data);
-        setSelectedSkuId(data.settings.productVariants[0]?.id ?? selectedSkuId);
-      }
-    });
+        setSelectedSkuId(data.settings.productVariants[0]?.id ?? 'single');
+        setLoadError('');
+      })
+      .catch(() => {
+        if (active) setLoadError('前台数据加载失败，请刷新后重试');
+      });
     return () => {
       active = false;
     };
   }, []);
 
   useEffect(() => {
-    if (!bootstrap.heroImages.length) return;
+    if (!bootstrap?.heroImages.length) return;
     const timer = window.setInterval(() => setSlide((current) => (current + 1) % bootstrap.heroImages.length), 2500);
     return () => window.clearInterval(timer);
-  }, [bootstrap.heroImages.length]);
+  }, [bootstrap?.heroImages.length]);
 
   useEffect(() => {
-    if (!bootstrap.floatingPurchases.length) return;
+    if (!bootstrap?.floatingPurchases.length) return;
     const timer = window.setInterval(() => setPurchaseIndex((current) => (current + 1) % bootstrap.floatingPurchases.length), 2100);
     return () => window.clearInterval(timer);
-  }, [bootstrap.floatingPurchases.length]);
+  }, [bootstrap?.floatingPurchases.length]);
 
   useEffect(() => {
     if (!toast) return;
@@ -211,31 +215,60 @@ function PublicApp() {
     return () => document.body.classList.remove('body-locked');
   }, [reviewOpen, checkoutOpen]);
 
-  const settings = bootstrap.settings;
-  const selectedSku = useMemo(() => {
-    const sku = settings.productVariants.find((item) => item.id === selectedSkuId) ?? settings.productVariants[0] ?? defaultBootstrap.settings.productVariants[0];
-    const primarySkuId = settings.productVariants[0]?.id ?? sku.id;
+  if (loadError) {
+    return (
+      <div className="store-page">
+        <div className="admin-loading">
+          <Alert type="error" message="前台加载失败" description={loadError} showIcon />
+        </div>
+      </div>
+    );
+  }
 
-    if (sku.id !== primarySkuId) {
-      return sku;
+  if (!bootstrap) {
+    return (
+      <div className="store-page">
+        <div className="admin-loading">
+          <Spin size="large" />
+        </div>
+      </div>
+    );
+  }
+
+  const settings = bootstrap.settings;
+  const firstVariant = settings.productVariants[0];
+  const selectedSku = useMemo(() => {
+    if (!firstVariant) {
+      return {
+        id: 'single',
+        name: settings.title || settings.shopName,
+        subtitle: settings.subtitle,
+        price: settings.salePrice,
+        originalPrice: settings.originalPrice,
+        saleLabel: '券后价',
+      } as ProductVariant;
     }
 
-    return {
-      ...sku,
-      price: settings.salePrice,
-      originalPrice: settings.originalPrice,
-    };
-  }, [selectedSkuId, settings.productVariants, settings.salePrice, settings.originalPrice]);
+    if (selectedSkuId === firstVariant.id) {
+      return {
+        ...firstVariant,
+        price: settings.salePrice,
+        originalPrice: settings.originalPrice,
+      };
+    }
+
+    return settings.productVariants.find((item) => item.id === selectedSkuId) ?? firstVariant;
+  }, [firstVariant, selectedSkuId, settings.productVariants, settings.salePrice, settings.originalPrice, settings.subtitle, settings.shopName, settings.title]);
 
   const total = selectedSku.price * quantity;
-  const reviewTags = settings.reviewTags.length ? settings.reviewTags : defaultBootstrap.settings.reviewTags;
-  const heroImages = bootstrap.heroImages.length ? bootstrap.heroImages : defaultBootstrap.heroImages;
-  const detailImages = bootstrap.detailImages.length ? bootstrap.detailImages : defaultBootstrap.detailImages;
-  const reviews = bootstrap.reviews.length ? bootstrap.reviews : defaultBootstrap.reviews;
-  const allReviews = bootstrap.allReviews.length ? bootstrap.allReviews : defaultBootstrap.allReviews;
-  const floatingPurchases = bootstrap.floatingPurchases.length ? bootstrap.floatingPurchases : defaultBootstrap.floatingPurchases;
+  const reviewTags = settings.reviewTags;
+  const heroImages = bootstrap.heroImages;
+  const detailImages = bootstrap.detailImages;
+  const reviews = bootstrap.reviews;
+  const allReviews = bootstrap.allReviews;
+  const floatingPurchases = bootstrap.floatingPurchases;
   const latestItems = floatingPurchases.slice(0, 8);
-  const floatingItem = latestItems[purchaseIndex % latestItems.length] ?? latestItems[0];
+  const floatingItem = latestItems[purchaseIndex % latestItems.length] ?? null;
 
   const showToast = (message = '已为演示页面保留下单样式，未提交任何接口') => setToast(message);
 
@@ -338,8 +371,7 @@ function PublicApp() {
 
       <div className="purchase-feed" aria-live="polite">
         <p className="purchase-item active">
-          <img src={floatingItem?.resolvedUrl ?? '/assets/hero-1.jpg'} alt="" />
-          <span>{floatingItem?.content ?? settings.marqueeText}</span>
+          <img src={floatingItem?.resolvedUrl ?? floatingPurchases[0]?.resolvedUrl ?? ''} alt="" />
         </p>
       </div>
 
