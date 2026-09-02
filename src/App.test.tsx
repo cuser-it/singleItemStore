@@ -9,7 +9,6 @@ const adminBootstrap = {
   sites: [defaultBootstrap.site, { ...defaultBootstrap.site, id: 2, name: '第二站点', slug: 'second-site', isActive: false }],
   activeSiteId: defaultBootstrap.site.id,
 };
-
 vi.mock('./api', () => ({
   activateSite: vi.fn(),
   createFloatingPurchase: vi.fn(),
@@ -19,9 +18,9 @@ vi.mock('./api', () => ({
   deleteFloatingPurchase: vi.fn(),
   deleteMediaAsset: vi.fn(),
   deleteReview: vi.fn(),
-  fetchAdminBootstrap: vi.fn().mockResolvedValue(adminBootstrap),
-  fetchAdminMe: vi.fn().mockResolvedValue(false),
-  fetchPublicBootstrap: vi.fn().mockResolvedValue(defaultBootstrap),
+  fetchAdminBootstrap: vi.fn(),
+  fetchAdminMe: vi.fn(),
+  fetchPublicBootstrap: vi.fn(),
   loginAdmin: vi.fn(),
   logoutAdmin: vi.fn(),
   saveSiteSettings: vi.fn(),
@@ -32,7 +31,7 @@ vi.mock('./api', () => ({
   uploadAsset: vi.fn(),
 }))
 
-import { activateSite, createReview, createSite, fetchAdminBootstrap, fetchAdminMe, fetchPublicBootstrap, saveSiteSettings, uploadAsset } from './api';
+import { activateSite, createReview, createSite, deleteReview, fetchAdminBootstrap, fetchAdminMe, fetchPublicBootstrap, saveSiteSettings, uploadAsset } from './api';
 import { App } from './App';
 
 beforeEach(() => {
@@ -44,6 +43,7 @@ beforeEach(() => {
   vi.mocked(activateSite).mockResolvedValue({ ...defaultBootstrap.site, id: 2, name: '第二站点', slug: 'second-site', isActive: true });
   vi.mocked(uploadAsset).mockResolvedValue({ source: '/img/review-upload.jpg', resolvedUrl: '/img/review-upload.jpg' });
   vi.mocked(createReview).mockResolvedValue({ ...defaultBootstrap.allReviews[0], id: 99, images: ['/img/review-upload.jpg'] });
+  vi.mocked(deleteReview).mockResolvedValue(undefined);
   Object.defineProperty(window.navigator, 'userAgent', {
     configurable: true,
     value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
@@ -187,6 +187,23 @@ describe('App', () => {
 
     expect(uploadAsset).toHaveBeenCalled();
     expect(createReview).toHaveBeenCalledWith(expect.objectContaining({ images: ['/img/review-upload.jpg'] }));
+  });
+
+  it('deletes a review after confirmation', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchAdminMe).mockResolvedValue(true);
+    window.history.replaceState({}, '', '/admin');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '欢迎回来' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: /评价管理/ }));
+    expect(await screen.findByRole('heading', { name: '评价管理' })).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: '删除' })[0]);
+    await user.click(await screen.findByRole('button', { name: '确认删除' }));
+
+    expect(deleteReview).toHaveBeenCalledWith(defaultBootstrap.allReviews[0].id);
   });
 
   it('blocks admin pages on mobile', async () => {

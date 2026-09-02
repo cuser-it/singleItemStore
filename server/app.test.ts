@@ -57,6 +57,33 @@ describe('backend', () => {
     expect(allowed.status).toBe(200);
     await expect(allowed.json()).resolves.toEqual({ authenticated: true });
   });
+  it('deletes reviews from the active site', async () => {
+    await login();
+
+    const createResponse = await fetch(`${baseUrl}/api/admin/reviews`, {
+      method: 'POST',
+      headers: { cookie: authCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: '待删除评价',
+        content: 'delete me',
+        images: [],
+        featuredOnHome: false,
+        homeOrder: 0,
+        enabled: true,
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const review = (await createResponse.json()) as { id: number; name: string };
+
+    const deleteResponse = await fetch(`${baseUrl}/api/admin/reviews/${review.id}`, {
+      method: 'DELETE',
+      headers: { cookie: authCookie },
+    });
+    expect(deleteResponse.status).toBe(204);
+
+    const reviews = (await fetch(`${baseUrl}/api/admin/reviews`, { headers: { cookie: authCookie } }).then((response) => response.json())) as Array<{ id: number; name: string }>;
+    expect(reviews.some((item) => item.id === review.id)).toBe(false);
+  });
 
   it('stores uploaded media and preserves URL media and detail ordering', async () => {
     await login();

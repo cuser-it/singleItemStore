@@ -724,7 +724,7 @@ function AdminApp() {
     Modal.confirm({
       title: `确定删除${title}吗？`,
       content: '删除后无法恢复，请确认当前操作。',
-      okText: '删除',
+      okText: '确认删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
       onOk: async () => {
