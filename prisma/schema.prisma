@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SiteSettings {
+  id                Int      @id
+  shopName          String
+  title             String
+  subtitle          String
+  highlight         String
+  serviceNote       String
+  guarantee         Json
+  productDescription String
+  shippingNote      String
+  reminder          String
+  shippingTime      String
+  salePrice         Float
+  originalPrice     Float
+  soldText          String
+  marqueeText       String
+  reviewTags        Json
+  productVariants    Json
+  heroImageCount    Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model MediaAsset {
+  id         Int      @id @default(autoincrement())
+  section    String
+  sourceType String
+  source      String
+  alt         String
+  sortOrder   Int      @default(0)
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Review {
+  id              Int      @id @default(autoincrement())
+  name            String
+  content         String
+  images          Json
+  featuredOnHome  Boolean  @default(false)
+  homeOrder       Int      @default(0)
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model FloatingPurchase {
+  id        Int      @id @default(autoincrement())
+  content   String
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
