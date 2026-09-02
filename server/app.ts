@@ -500,7 +500,9 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.put('/api/admin/site-settings', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.json(await store.updateSiteSettings(buildSettingsInput(req.body)));
+    const updated = await store.updateSiteSettings(buildSettingsInput(req.body));
+    await orderService.listSkus(updated.siteId);
+    res.json(updated);
   });
 
   app.get('/api/admin/media-assets', async (req, res) => {

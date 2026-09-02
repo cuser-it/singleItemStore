@@ -135,6 +135,19 @@ describe('App', () => {
     expect(await screen.findByText('¥123.0')).toBeInTheDocument();
     expect(screen.getByText('划线¥456.0')).toBeInTheDocument();
   });
+  it('renders live SKU prices in the product and checkout views', async () => {
+    const user = userEvent.setup();
+    const liveSku = {
+      id: 77, siteId: 1, skuCode: 'single', name: '后台改价规格', subtitle: '实时副标题', price: '188.88', originalPrice: '399.00', saleLabel: '后台价', highlight: '限时', enabled: true, sortOrder: 1, createdAt: 'now', updatedAt: 'now',
+    };
+    vi.mocked(fetchPublicBootstrap).mockResolvedValue({ ...defaultBootstrap, skus: [liveSku] });
+    render(<App />);
+    expect(await screen.findByText('¥188.88')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '立即发货' }));
+    expect(screen.getByLabelText('确认订单')).toHaveClass('sheet--open');
+    expect(screen.getByText('后台改价规格')).toBeInTheDocument();
+    expect(screen.getByText('¥399.00')).toBeInTheDocument();
+  });
 
   it('shows the admin login screen on desktop', async () => {
     window.matchMedia = ((query: string) => ({

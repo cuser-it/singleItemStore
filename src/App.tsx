@@ -204,7 +204,7 @@ function PublicApp() {
       .then((data) => {
         if (!active) return;
         setBootstrap(data);
-        setSelectedSkuId(data.settings.productVariants[0]?.id ?? 'single');
+        setSelectedSkuId(data.skus?.[0]?.skuCode ?? data.settings.productVariants[0]?.id ?? 'single');
         setLoadError('');
       })
       .catch(() => {
@@ -259,30 +259,38 @@ function PublicApp() {
   }
 
   const settings = bootstrap.settings;
-  const firstVariant = settings.productVariants[0];
-  const selectedSku = (() => {
-    if (!firstVariant) {
-      return {
-        id: 'single',
-        name: settings.title || settings.shopName,
-        subtitle: settings.subtitle,
-        price: settings.salePrice,
-        originalPrice: settings.originalPrice,
-        saleLabel: '券后价',
-      } as ProductVariant;
-    }
-
-    if (selectedSkuId === firstVariant.id) {
-      return {
-        ...firstVariant,
-        price: settings.salePrice,
-        originalPrice: settings.originalPrice,
-      };
-    }
-
-    return settings.productVariants.find((item) => item.id === selectedSkuId) ?? firstVariant;
-  })();
-
+  const liveSkus = bootstrap.skus ?? settings.productVariants.map((variant, index) => ({
+    id: index + 1,
+    siteId: bootstrap.site.id,
+    skuCode: variant.id,
+    name: variant.name,
+    subtitle: variant.subtitle,
+    price: variant.price.toFixed(2),
+    originalPrice: variant.originalPrice.toFixed(2),
+    saleLabel: variant.saleLabel,
+    highlight: variant.highlight,
+    enabled: true,
+    sortOrder: index + 1,
+    createdAt: variant.id,
+    updatedAt: variant.id,
+  }));
+  const selectedSkuRecord = liveSkus.find((sku) => sku.skuCode === selectedSkuId) ?? liveSkus[0];
+  const selectedSku = selectedSkuRecord ? {
+    id: selectedSkuRecord.skuCode,
+    name: selectedSkuRecord.name,
+    subtitle: selectedSkuRecord.subtitle,
+    price: Number(selectedSkuRecord.price),
+    originalPrice: Number(selectedSkuRecord.originalPrice),
+    saleLabel: selectedSkuRecord.saleLabel,
+    highlight: selectedSkuRecord.highlight,
+  } : {
+    id: 'single',
+    name: settings.title || settings.shopName,
+    subtitle: settings.subtitle,
+    price: settings.salePrice,
+    originalPrice: settings.originalPrice,
+    saleLabel: '券后价',
+  };
   const total = selectedSku.price * quantity;
   const reviewTags = settings.reviewTags;
   const heroImages = bootstrap.heroImages;
@@ -353,16 +361,24 @@ function PublicApp() {
 
         <PriceBanner sku={selectedSku} />
 
-        <section className="card pad">
-          <div className="shop-line">
-            <span>
-              <span className="official">商城官方自营</span>
-              {settings.reminder}
-            </span>
-            <span>{settings.soldText}</span>
+        <section className="card pad product-hero">
+          <div className="product-hero__top">
+            <span className="official">商城官方自营</span>
+            <span>{settings.serviceNote}</span>
           </div>
           <h1 className="title">{titleText(settings)}</h1>
-          <div className="muted">{settings.subtitle}</div>
+          <p className="product-hero__subtitle">{settings.subtitle}</p>
+          <div className="product-hero__highlight">{settings.highlight}</div>
+          <div className="product-hero__stats">
+            <div><strong>{settings.soldText}</strong><span>销量</span></div>
+            <div><strong>¥{selectedSku.price.toFixed(2)}</strong><span>{selectedSku.saleLabel}</span></div>
+            <div><strong>{settings.heroImageCount}</strong><span>主图</span></div>
+          </div>
+          <div className="product-hero__chips">
+            {settings.guarantee.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </div>
         </section>
 
         <section className="card info-card" aria-label="商品说明">
@@ -476,55 +492,74 @@ function PublicApp() {
       </Sheet>
 
       <Sheet open={checkoutOpen} title="确认订单" onClose={() => setCheckoutOpen(false)}>
-        <div className="checkout-sheet-body">
-          <div className="checkout-summary">
-            <div className="checkout-summary-top">
-              <div>
-                <div className="checkout-summary-label">当前商品</div>
-                <div className="checkout-summary-name">{selectedSku.name}</div>
-              </div>
-              <div className="checkout-summary-price">¥{total.toFixed(1)}</div>
+        <div className="checkout-sheet-body checkout-redesign">
+          <section className="checkout-product-panel">
+            <div className="checkout-product-main">
+              <div className="checkout-product-kicker">{settings.shopName}</div>
+              <h3>{titleText(settings)}</h3>
+              <p>{settings.subtitle}</p>
             </div>
-          </div>
-          <div className="checkout-body">
-            <div className="field-title">规格</div>
-            <div className="checkout-specs">
-              {settings.productVariants.map((sku) => (
-                <button key={sku.id} className={sku.id === selectedSkuId ? 'checkout-spec active' : 'checkout-spec'} type="button" onClick={() => setSelectedSkuId(sku.id)}>
-                  {sku.name}
+            <div className="checkout-price-stack">
+              <span>{selectedSku.saleLabel}</span>
+              <strong>¥{selectedSku.price.toFixed(2)}</strong>
+              <del>¥{selectedSku.originalPrice.toFixed(2)}</del>
+            </div>
+          </section>
+
+          <section className="checkout-section">
+            <div className="checkout-section-title">选择规格</div>
+            <div className="checkout-spec-grid">
+              {liveSkus.map((sku) => (
+                <button key={sku.id} className={sku.skuCode === selectedSkuId ? 'checkout-spec-card active' : 'checkout-spec-card'} type="button" onClick={() => setSelectedSkuId(sku.skuCode)}>
+                  <span>{sku.name}</span>
+                  <small>{sku.subtitle}</small>
+                  <b>¥{Number(sku.price).toFixed(2)}</b>
+                  {sku.highlight ? <em>{sku.highlight}</em> : null}
                 </button>
               ))}
             </div>
-            <div className="checkout-row">
-              <label>数 量</label>
-              <Stepper value={quantity} onDecrease={() => setQuantity((current) => clampQty(current - 1))} onIncrease={() => setQuantity((current) => current + 1)} className="checkout-stepper" />
+          </section>
+
+          <section className="checkout-section checkout-quantity-line">
+            <div>
+              <div className="checkout-section-title">购买数量</div>
+              <span className="checkout-muted">最多 99 件，按当前 SKU 单价结算</span>
             </div>
-            <div className="checkout-row">
-              <label>总 价</label>
-              <div className="checkout-total">¥{total.toFixed(1)}</div>
-            </div>
-            <div className="checkout-row">
-              <label htmlFor="checkoutName">姓 名</label>
-              <input id="checkoutName" name="checkoutName" placeholder="请填写姓名" />
-            </div>
-            <div className="checkout-row">
-              <label htmlFor="checkoutPhone">手机号码</label>
-              <input id="checkoutPhone" name="checkoutPhone" inputMode="tel" maxLength={11} placeholder="请填写手机号码" />
-            </div>
-            <div className="checkout-row">
-              <label htmlFor="checkoutAddress">收货地址</label>
-              <textarea id="checkoutAddress" name="checkoutAddress" placeholder="请填写收货地址" />
-            </div>
-            <div className="field-title">支付方式</div>
+            <Stepper value={quantity} onDecrease={() => setQuantity((current) => clampQty(current - 1))} onIncrease={() => setQuantity((current) => Math.min(99, current + 1))} className="checkout-stepper" />
+          </section>
+
+          <section className="checkout-section checkout-info-grid">
+            <div><b>产品描述</b><span>{settings.productDescription}</span></div>
+            <div><b>邮费说明</b><span>{settings.shippingNote}</span></div>
+            <div><b>发货时间</b><span>{settings.shippingTime}</span></div>
+            <div><b>温馨提示</b><span>{settings.reminder}</span></div>
+          </section>
+
+          <section className="checkout-section checkout-guarantees">
+            {settings.guarantee.map((item) => <span key={item}>{item}</span>)}
+          </section>
+
+          <section className="checkout-section checkout-recipient-form">
+            <div className="checkout-section-title">收货信息</div>
+            <label htmlFor="checkoutName">姓名<input id="checkoutName" name="checkoutName" placeholder="请填写姓名" /></label>
+            <label htmlFor="checkoutPhone">手机号码<input id="checkoutPhone" name="checkoutPhone" inputMode="tel" maxLength={11} placeholder="请填写手机号码" /></label>
+            <label htmlFor="checkoutAddress">收货地址<textarea id="checkoutAddress" name="checkoutAddress" placeholder="请填写收货地址" /></label>
+          </section>
+
+          <section className="checkout-section">
+            <div className="checkout-section-title">支付方式</div>
             <div className="checkout-payments">
-              <button className={checkoutPayment === 'wechat' ? 'checkout-pay active' : 'checkout-pay'} type="button" onClick={() => setCheckoutPayment('wechat')}>
-                微信支付
-              </button>
-              <button className={checkoutPayment === 'alipay' ? 'checkout-pay active' : 'checkout-pay'} type="button" onClick={() => setCheckoutPayment('alipay')}>
-                支付宝支付
-              </button>
+              <button className={checkoutPayment === 'wechat' ? 'checkout-pay active' : 'checkout-pay'} type="button" onClick={() => setCheckoutPayment('wechat')}>微信支付</button>
+              <button className={checkoutPayment === 'alipay' ? 'checkout-pay active' : 'checkout-pay'} type="button" onClick={() => setCheckoutPayment('alipay')}>支付宝支付</button>
             </div>
-          </div>
+          </section>
+
+          <section className="checkout-section checkout-total-panel">
+            <div><span>商品单价</span><b>¥{selectedSku.price.toFixed(2)}</b></div>
+            <div><span>数量</span><b>x {quantity}</b></div>
+            <div><span>运费</span><b>{settings.shippingNote}</b></div>
+            <div className="checkout-total-row"><span>应付合计</span><strong>¥{total.toFixed(2)}</strong></div>
+          </section>
         </div>
         <div className="checkout-actions">
           <button

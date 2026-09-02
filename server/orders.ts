@@ -107,6 +107,7 @@ export class OrderService {
   private orderSeq = 1000;
   private logSeq = 1;
   private clients = new Set<Response>();
+  private skuSignatures = new Map<number, string>();
   private paymentSettings: PaymentSettingsInput & { updatedAt: string } = {
     gatewayUrl: process.env.EPAY_GATEWAY_URL ?? 'https://pay.example.test/submit.php',
     merchantId: process.env.EPAY_MERCHANT_ID ?? 'demo',
@@ -122,11 +123,25 @@ export class OrderService {
   async ensureSiteSkus(siteId?: number) {
     const site = siteId ? undefined : await this.store.getActiveSite();
     const resolvedSiteId = siteId ?? site!.id;
+    const bootstrap = await this.store.getBootstrap(resolvedSiteId);
+    const variants = bootstrap.settings.productVariants;
+    const signature = JSON.stringify(variants);
     if (!this.skus.has(resolvedSiteId)) {
-      const bootstrap = await this.store.getBootstrap(resolvedSiteId);
       const timestamp = nowIso();
-      this.skus.set(resolvedSiteId, bootstrap.settings.productVariants.map((variant, index) => mapVariantToSku(variant, resolvedSiteId, index, timestamp)));
+      this.skus.set(resolvedSiteId, variants.map((variant, index) => mapVariantToSku(variant, resolvedSiteId, index, timestamp)));
       this.skuSeq = Math.max(this.skuSeq, ...this.skus.get(resolvedSiteId)!.map((item) => item.id)) + 1;
+      this.skuSignatures.set(resolvedSiteId, signature);
+    } else if (this.skuSignatures.get(resolvedSiteId) !== signature) {
+      const current = this.skus.get(resolvedSiteId)!;
+      const timestamp = nowIso();
+      const byCode = new Map(current.map((sku) => [sku.skuCode, sku]));
+      const next = variants.map((variant, index) => {
+        const existing = byCode.get(variant.id);
+        const mapped = mapVariantToSku(variant, resolvedSiteId, index, timestamp);
+        return existing ? { ...mapped, id: existing.id, enabled: existing.enabled, createdAt: existing.createdAt } : mapped;
+      });
+      this.skus.set(resolvedSiteId, next);
+      this.skuSignatures.set(resolvedSiteId, signature);
     }
     return this.skus.get(resolvedSiteId)!;
   }
