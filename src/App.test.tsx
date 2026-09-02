@@ -32,7 +32,7 @@ vi.mock('./api', () => ({
   uploadAsset: vi.fn(),
 }))
 
-import { activateSite, createSite, fetchAdminBootstrap, fetchAdminMe, fetchPublicBootstrap, saveSiteSettings } from './api';
+import { activateSite, createReview, createSite, fetchAdminBootstrap, fetchAdminMe, fetchPublicBootstrap, saveSiteSettings, uploadAsset } from './api';
 import { App } from './App';
 
 beforeEach(() => {
@@ -42,6 +42,8 @@ beforeEach(() => {
   vi.mocked(fetchPublicBootstrap).mockResolvedValue(defaultBootstrap);
   vi.mocked(createSite).mockResolvedValue({ ...defaultBootstrap.site, id: 3, name: '华东商城', slug: 'east-store', isActive: false });
   vi.mocked(activateSite).mockResolvedValue({ ...defaultBootstrap.site, id: 2, name: '第二站点', slug: 'second-site', isActive: true });
+  vi.mocked(uploadAsset).mockResolvedValue({ source: '/img/review-upload.jpg', resolvedUrl: '/img/review-upload.jpg' });
+  vi.mocked(createReview).mockResolvedValue({ ...defaultBootstrap.allReviews[0], id: 99, images: ['/img/review-upload.jpg'] });
   Object.defineProperty(window.navigator, 'userAgent', {
     configurable: true,
     value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
@@ -164,6 +166,28 @@ describe('App', () => {
     expect(activateSite).toHaveBeenCalledWith(2);
   });
 
+  it('uploads a review image and fills the returned link before saving', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchAdminMe).mockResolvedValue(true);
+    window.history.replaceState({}, '', '/admin');
+    const { container } = render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '欢迎回来' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: /评价管理/ }));
+    await user.click(await screen.findByRole('button', { name: '添加评价' }));
+    await user.type(screen.getByLabelText('用户名'), '新用户');
+    await user.type(screen.getByLabelText('内容'), '这是一条新评价');
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(fileInput).not.toBeNull();
+    await user.upload(fileInput!, new File(['image'], 'review.jpg', { type: 'image/jpeg' }));
+
+    expect(await screen.findByDisplayValue('/img/review-upload.jpg')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '新增评价' }));
+
+    expect(uploadAsset).toHaveBeenCalled();
+    expect(createReview).toHaveBeenCalledWith(expect.objectContaining({ images: ['/img/review-upload.jpg'] }));
+  });
 
   it('blocks admin pages on mobile', async () => {
     Object.defineProperty(window.navigator, 'userAgent', {

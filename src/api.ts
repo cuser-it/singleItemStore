@@ -11,13 +11,23 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
   });
 
   if (!response.ok) {
-    throw new Error(await response.text());
+    const text = await response.text();
+    let message = text || `Request failed with ${response.status}`;
+    try {
+      const data = JSON.parse(text) as { message?: string };
+      message = data.message || message;
+    } catch {
+      // Keep the raw response when the server did not return JSON.
+    }
+    throw new Error(message);
   }
 
   if (response.status === 204) {
     return undefined as T;
   }
 
+  return (await response.json()) as T;
+}
   return (await response.json()) as T;
 }
 

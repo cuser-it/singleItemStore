@@ -27,7 +27,8 @@ export type CreateAppOptions = {
 };
 
 const jsonParser = express.json({ limit: '2mb' });
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const maxUploadSizeMb = Math.max(1, Number(process.env.MAX_UPLOAD_SIZE_MB ?? 20));
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxUploadSizeMb * 1024 * 1024 } });
 
 function toNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -345,14 +346,24 @@ export async function createApp(options: CreateAppOptions = {}) {
     res.status(await store.deleteFloatingPurchase(Number(req.params.id)) ? 204 : 404).end();
   });
 
-  app.post('/api/admin/upload', upload.single('file'), async (req, res) => {
+  app.post('/api/admin/upload', (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    if (!req.file) {
-      res.status(400).json({ message: 'file required' });
-      return;
-    }
-    const source = await storeUpload(uploadDir, req.file);
-    res.status(201).json({ source, resolvedUrl: source });
+    upload.single('file')(req, res, async (error) => {
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        res.status(413).json({ message: `图片过大，请上传不超过 ${maxUploadSizeMb}MB 的文件` });
+        return;
+      }
+      if (error) {
+        res.status(400).json({ message: '图片上传失败，请重新选择文件' });
+        return;
+      }
+      if (!req.file) {
+        res.status(400).json({ message: 'file required' });
+        return;
+      }
+      const source = await storeUpload(uploadDir, req.file);
+      res.status(201).json({ source, resolvedUrl: source });
+    });
   });
 
   return app;

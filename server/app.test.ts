@@ -97,6 +97,21 @@ describe('backend', () => {
     expect(publicBootstrap.heroImages.some((item) => item.resolvedUrl.startsWith('/img/'))).toBe(true);
     expect(publicBootstrap.detailImages.at(-1)?.resolvedUrl).toBe('https://example.com/detail-99.jpg');
   });
+  it('returns a clear 413 response when an upload is too large', async () => {
+    await login();
+
+    const uploadForm = new FormData();
+    uploadForm.append('file', new Blob([new Uint8Array(21 * 1024 * 1024)], { type: 'image/jpeg' }), 'too-large.jpg');
+
+    const uploadResponse = await fetch(`${baseUrl}/api/admin/upload`, {
+      method: 'POST',
+      headers: { cookie: authCookie },
+      body: uploadForm,
+    });
+
+    expect(uploadResponse.status).toBe(413);
+    await expect(uploadResponse.json()).resolves.toEqual({ message: '图片过大，请上传不超过 20MB 的文件' });
+  });
 
   it('returns the newest reviews first and keeps the homepage list at two items', async () => {
     await login();
