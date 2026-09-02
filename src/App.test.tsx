@@ -22,10 +22,16 @@ vi.mock('./api', () => ({
   uploadAsset: vi.fn(),
 }));
 
+import { fetchAdminMe, saveSiteSettings } from './api';
 import { App } from './App';
 
 beforeEach(() => {
   window.history.replaceState({}, '', '/');
+  vi.mocked(fetchAdminMe).mockResolvedValue(false);
+  Object.defineProperty(window.navigator, 'userAgent', {
+    configurable: true,
+    value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+  });
   window.matchMedia = ((query: string) => ({
     matches: query.includes('min-width: 1024px'),
     media: query,
@@ -63,6 +69,16 @@ describe('App', () => {
   });
 
   it('shows the admin login screen on desktop', async () => {
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
     window.history.replaceState({}, '', '/admin/login');
 
     render(<App />);
@@ -72,9 +88,36 @@ describe('App', () => {
     expect(screen.getByText('后台仅支持桌面端访问，请使用电脑浏览器继续。')).toBeInTheDocument();
   });
 
+  it('renders authenticated admin data and saves site settings through the API', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchAdminMe).mockResolvedValue(true);
+    vi.mocked(saveSiteSettings).mockResolvedValue(defaultBootstrap.settings);
+    window.history.replaceState({}, '', '/admin');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '欢迎回来' })).toBeInTheDocument();
+    expect(screen.getByText('图片总数')).toBeInTheDocument();
+    expect(screen.getByText('评价总数')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /评价管理/ }));
+    expect(await screen.findByRole('heading', { name: '评价管理' })).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText('输入用户名...'), defaultBootstrap.allReviews[0].name);
+    expect(screen.getByText(defaultBootstrap.allReviews[0].content)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /站点配置/ }));
+    await user.click(screen.getByRole('button', { name: '修改配置' }));
+
+    expect(saveSiteSettings).toHaveBeenCalledWith(expect.objectContaining({ shopName: defaultBootstrap.settings.shopName }));
+  });
+
   it('blocks admin pages on mobile', async () => {
+    Object.defineProperty(window.navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+    });
     window.matchMedia = ((query: string) => ({
-      matches: false,
+      matches: query.includes('min-width: 1024px'),
       media: query,
       onchange: null,
       addEventListener: () => {},

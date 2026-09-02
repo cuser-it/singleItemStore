@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Bell, HelpCircle, Image, LayoutDashboard, Layers, LogOut, MessageSquare, Plus, Search, Settings, ShoppingBag, SlidersHorizontal } from 'lucide-react';
 import {
   defaultBootstrap,
   type FloatingPurchase,
@@ -41,10 +42,6 @@ function usePathname() {
   return pathname;
 }
 
-function navigate(pathname: string) {
-  window.history.pushState({}, '', pathname);
-  window.dispatchEvent(new PopStateEvent('popstate'));
-}
 
 function clampQty(value: number) {
   return Math.max(1, value);
@@ -428,35 +425,15 @@ type PurchaseDraft = {
   sortOrder: number;
 };
 
-function isDesktopViewport() {
-  if (typeof window.matchMedia === 'function') {
-    return window.matchMedia('(min-width: 1024px)').matches;
-  }
-  return window.innerWidth >= 1024;
+function isPcUserAgent() {
+  const userAgent = navigator.userAgent.toLowerCase();
+  return !/android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(userAgent);
 }
 
 function useIsDesktop() {
-  const [isDesktop, setIsDesktop] = useState(isDesktopViewport());
-
-  useEffect(() => {
-    const media = window.matchMedia?.('(min-width: 1024px)');
-    const sync = () => setIsDesktop(isDesktopViewport());
-
-    sync();
-    media?.addEventListener?.('change', sync);
-    window.addEventListener('resize', sync);
-
-    return () => {
-      media?.removeEventListener?.('change', sync);
-      window.removeEventListener('resize', sync);
-    };
-  }, []);
+  const [isDesktop] = useState(isPcUserAgent);
 
   return isDesktop;
-}
-
-function scrollToAdminSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function AdminBlocked() {
@@ -467,7 +444,7 @@ function AdminBlocked() {
           <div className="admin-blocked-kicker">后台仅支持 PC 端</div>
           <h1 className="admin-blocked-title">请使用桌面浏览器访问管理页</h1>
           <p className="admin-blocked-copy">
-            当前设备宽度过小，无法打开后台管理界面。请在电脑端重新访问 /admin 或 /admin/login。
+            当前设备不是 PC 浏览器，无法打开后台管理界面。请在电脑端重新访问 /admin 或 /admin/login。
           </p>
         </section>
       </main>
@@ -485,6 +462,9 @@ function AdminApp() {
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ name: '', content: '', images: '', featuredOnHome: false, homeOrder: 0, enabled: true });
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft>({ content: '', enabled: true, sortOrder: 0 });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [activePage, setActivePage] = useState<'dashboard' | 'site-settings' | 'media-assets' | 'reviews' | 'floating-purchases'>('dashboard');
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [reviewQuery, setReviewQuery] = useState('');
 
   const refresh = async () => {
     const data = await fetchAdminBootstrap();
@@ -506,6 +486,13 @@ function AdminApp() {
     setReviewDraft({ name: '', content: '', images: '', featuredOnHome: false, homeOrder: 0, enabled: true });
     setPurchaseDraft({ content: '', enabled: true, sortOrder: 0 });
     setUploadFile(null);
+  };
+
+  const handleLogout = async () => {
+    await logoutAdmin();
+    setAuthed(false);
+    setBootstrap(null);
+    setStatus('');
   };
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -586,11 +573,21 @@ function AdminApp() {
   };
 
   const isDesktop = useIsDesktop();
+  const mediaAssets = (bootstrap?.heroImages ?? []).concat(bootstrap?.detailImages ?? []);
+  const allReviews = bootstrap?.allReviews ?? [];
+  const enabledReviews = allReviews.filter((item) => item.enabled);
+  const filteredReviews = allReviews.filter((item) => {
+    const matchStatus = reviewStatusFilter === 'all' || (reviewStatusFilter === 'enabled' ? item.enabled : !item.enabled);
+    const keyword = reviewQuery.trim().toLowerCase();
+    const matchQuery = !keyword || item.name.toLowerCase().includes(keyword) || item.content.toLowerCase().includes(keyword);
+    return matchStatus && matchQuery;
+  });
   const adminSections = [
-    { id: 'site-settings', label: '站点配置' },
-    { id: 'media-assets', label: '图片管理' },
-    { id: 'reviews', label: '评价管理' },
-    { id: 'floating-purchases', label: '浮层文案' },
+    { id: 'dashboard', label: '控制台', icon: LayoutDashboard },
+    { id: 'site-settings', label: '站点配置', icon: Settings },
+    { id: 'media-assets', label: '图片管理', icon: Image },
+    { id: 'reviews', label: '评价管理', icon: MessageSquare },
+    { id: 'floating-purchases', label: '浮层文案管理', icon: Layers },
   ] as const;
 
   if (!isDesktop) {
@@ -614,7 +611,7 @@ function AdminApp() {
     return (
       <div className="store-page admin-page">
         <main className="admin-auth-shell">
-          <section className="admin-auth-card">
+          <section className="admin-auth-card admin-login-panel">
             <div className="admin-auth-kicker">单店后台</div>
             <h1 className="title">后台登录</h1>
             <p className="muted">后台仅支持桌面端访问，请使用电脑浏览器继续。</p>
@@ -623,7 +620,7 @@ function AdminApp() {
                 密码
                 <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="请输入后台密码" />
               </label>
-              <button type="submit" className="checkout-submit">登录</button>
+              <button type="submit" className="admin-primary-button">登录</button>
             </form>
             {status ? <div className="muted">{status}</div> : null}
           </section>
@@ -634,268 +631,160 @@ function AdminApp() {
 
   return (
     <div className="store-page admin-page">
-      <div className="admin-layout">
+      <div className="admin-shell">
         <aside className="admin-sidebar">
-          <div className="admin-sidebar-card">
-            <div className="admin-auth-kicker">单店后台</div>
-            <h1 className="admin-sidebar-title">后台管理</h1>
-            <p className="admin-sidebar-copy">仅支持桌面端进行内容编辑、上传与发布。</p>
+          <div className="admin-brand-row">
+            <div className="admin-brand-mark"><ShoppingBag size={22} /></div>
+            <div>
+              <h1>管理系统</h1>
+              <p>企业级后台</p>
+            </div>
           </div>
           <nav className="admin-nav" aria-label="后台导航">
-            {adminSections.map((section) => (
-              <button key={section.id} type="button" className="admin-nav-item" onClick={() => scrollToAdminSection(section.id)}>
-                {section.label}
-              </button>
-            ))}
+            {adminSections.map((section) => {
+              const Icon = section.icon;
+              return (
+                <button key={section.id} type="button" className={activePage === section.id ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} onClick={() => setActivePage(section.id)}>
+                  <Icon size={22} />
+                  <span>{section.label}</span>
+                </button>
+              );
+            })}
           </nav>
-          <div className="admin-sidebar-actions">
-            <button type="button" className="buy-now" onClick={() => navigate('/')}>
-              返回前台
-            </button>
-            <button
-              type="button"
-              className="checkout-submit"
-              onClick={async () => {
-                await logoutAdmin();
-                setAuthed(false);
-                setBootstrap(null);
-                setStatus('');
-              }}
-            >
-              退出登录
-            </button>
-          </div>
-          <div className="admin-status">{status || '可以编辑站点配置、图片、评价和浮层文案'}</div>
-        </aside>
-        <main className="admin-main">
-          <section className="card pad admin-topbar">
+          <div className="admin-user-card">
+            <div className="admin-avatar">管</div>
             <div>
-              <h1 className="title">后台管理</h1>
-              <div className="muted">{status || '可以编辑站点配置、图片、评价和浮层文案'}</div>
+              <strong>管理员</strong>
+              <span>System Admin</span>
             </div>
-            <div className="admin-topbar-actions">
-              <button type="button" className="buy-now" onClick={() => navigate('/')}>
-                返回前台
-              </button>
-              <button
-                type="button"
-                className="checkout-submit"
-                onClick={async () => {
-                  await logoutAdmin();
-                  setAuthed(false);
-                  setBootstrap(null);
-                  setStatus('');
-                }}
-              >
-                退出登录
-              </button>
-            </div>
-          </section>
+          </div>
+        </aside>
 
-          <section id="site-settings" className="card pad admin-section admin-section--wide">
-            <h2 className="admin-section-title">站点配置</h2>
-            {settings ? (
-              <form className="admin-form admin-form-grid" onSubmit={handleSettingsSave}>
-                <label>
-                  商品标题
-                  <input value={settings.title} onChange={(event) => setSettings({ ...settings, title: event.target.value })} />
-                </label>
-                <label>
-                  店铺名称
-                  <input value={settings.shopName} onChange={(event) => setSettings({ ...settings, shopName: event.target.value })} />
-                </label>
-                <label>
-                  副标题
-                  <input value={settings.subtitle} onChange={(event) => setSettings({ ...settings, subtitle: event.target.value })} />
-                </label>
-                <label>
-                  价格文案
-                  <input value={settings.highlight} onChange={(event) => setSettings({ ...settings, highlight: event.target.value })} />
-                </label>
-                <label>
-                  价格
-                  <input type="number" value={settings.salePrice} onChange={(event) => setSettings({ ...settings, salePrice: Number(event.target.value) })} />
-                </label>
-                <label>
-                  划线价
-                  <input type="number" value={settings.originalPrice} onChange={(event) => setSettings({ ...settings, originalPrice: Number(event.target.value) })} />
-                </label>
-                <label>
-                  产品描述
-                  <input value={settings.productDescription} onChange={(event) => setSettings({ ...settings, productDescription: event.target.value })} />
-                </label>
-                <label>
-                  邮费说明
-                  <input value={settings.shippingNote} onChange={(event) => setSettings({ ...settings, shippingNote: event.target.value })} />
-                </label>
-                <label>
-                  温馨提示
-                  <input value={settings.reminder} onChange={(event) => setSettings({ ...settings, reminder: event.target.value })} />
-                </label>
-                <label>
-                  发货时间
-                  <input value={settings.shippingTime} onChange={(event) => setSettings({ ...settings, shippingTime: event.target.value })} />
-                </label>
-                <label className="admin-wide">
-                  首页滚动文案
-                  <input value={settings.marqueeText} onChange={(event) => setSettings({ ...settings, marqueeText: event.target.value })} />
-                </label>
-                <label className="admin-wide">
-                  卖点标签，每行一个
-                  <textarea value={settings.reviewTags.join('\n')} onChange={(event) => setSettings({ ...settings, reviewTags: event.target.value.split('\n').map((item) => item.trim()).filter(Boolean) })} />
-                </label>
-                <button type="submit" className="checkout-submit admin-submit">保存站点配置</button>
-              </form>
+        <div className="admin-workspace">
+          <header className="admin-header">
+            <h2>管理中心</h2>
+            <div className="admin-search"><Search size={18} /><input placeholder="全局搜索..." aria-label="全局搜索" /></div>
+            <div className="admin-header-actions">
+              <button type="button" aria-label="通知"><Bell size={22} /><i /></button>
+              <button type="button" aria-label="帮助"><HelpCircle size={22} /></button>
+              <div className="admin-header-user"><div className="admin-avatar admin-avatar--small">A</div><span>Admin</span></div>
+              <button type="button" className="admin-logout" onClick={handleLogout}><LogOut size={16} />退出登录</button>
+            </div>
+          </header>
+
+          <main className="admin-content">
+            {activePage === 'dashboard' ? (
+              <>
+                <section className="admin-page-title">
+                  <h1>欢迎回来</h1>
+                  <p>这里是您今天的数据概览。</p>
+                </section>
+                <section className="admin-stat-grid" aria-label="后台数据概览">
+                  <article className="admin-stat-card">
+                    <div className="admin-stat-icon admin-stat-icon--blue"><Image size={28} /></div>
+                    <div><span>图片总数</span><strong>{mediaAssets.length.toLocaleString()}</strong><small>+{Math.max(mediaAssets.filter((item) => item.enabled).length, 0)} 已启用</small></div>
+                  </article>
+                  <article className="admin-stat-card">
+                    <div className="admin-stat-icon admin-stat-icon--orange"><MessageSquare size={28} /></div>
+                    <div><span>评价总数</span><strong>{allReviews.length.toLocaleString()}</strong><small>+{enabledReviews.length} 已启用</small></div>
+                  </article>
+                  <article className="admin-stat-card">
+                    <div className="admin-stat-icon admin-stat-icon--slate"><Layers size={28} /></div>
+                    <div><span>活跃浮层</span><strong>{(bootstrap?.floatingPurchases ?? []).filter((item) => item.enabled).length}</strong><small>持平 较上周</small></div>
+                  </article>
+                </section>
+                <section className="admin-quick-grid">
+                  <button type="button" className="admin-quick-card" onClick={() => setActivePage('site-settings')}>
+                    <Settings size={24} /><span><strong>站点配置</strong><small>管理系统全局设置，包括基础信息与核心参数。</small></span>
+                  </button>
+                  <button type="button" className="admin-quick-card" onClick={() => setActivePage('media-assets')}>
+                    <Image size={24} /><span><strong>媒体资产</strong><small>快速上传、归档及管理全局图片资源。</small></span>
+                  </button>
+                </section>
+              </>
             ) : null}
-          </section>
 
-          <section id="media-assets" className="card pad admin-section">
-            <h2 className="admin-section-title">图片管理</h2>
-            <form className="admin-form admin-form-grid" onSubmit={handleMediaSave}>
-              <label>
-                区域
-                <select value={mediaDraft.section} onChange={(event) => setMediaDraft({ ...mediaDraft, section: event.target.value === 'detail' ? 'detail' : 'hero' })}>
-                  <option value="hero">hero</option>
-                  <option value="detail">detail</option>
-                </select>
-              </label>
-              <label>
-                来源类型
-                <select value={mediaDraft.sourceType} onChange={(event) => setMediaDraft({ ...mediaDraft, sourceType: event.target.value === 'upload' ? 'upload' : 'url' })}>
-                  <option value="url">url</option>
-                  <option value="upload">upload</option>
-                </select>
-              </label>
-              <label>
-                图片地址
-                <input value={mediaDraft.source} onChange={(event) => setMediaDraft({ ...mediaDraft, source: event.target.value })} placeholder="https://... 或 /img/..." />
-              </label>
-              <label>
-                上传文件
-                <input type="file" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
-              </label>
-              <label>
-                替代文本
-                <input value={mediaDraft.alt} onChange={(event) => setMediaDraft({ ...mediaDraft, alt: event.target.value })} />
-              </label>
-              <label>
-                排序
-                <input type="number" value={mediaDraft.sortOrder} onChange={(event) => setMediaDraft({ ...mediaDraft, sortOrder: Number(event.target.value) })} />
-              </label>
-              <label>
-                启用
-                <input type="checkbox" checked={mediaDraft.enabled} onChange={(event) => setMediaDraft({ ...mediaDraft, enabled: event.target.checked })} />
-              </label>
-              <button type="submit" className="checkout-submit admin-submit">{mediaDraft.id ? '更新图片' : '新增图片'}</button>
-              <button type="button" className="buy-now admin-reset" onClick={() => { setMediaDraft({ section: 'hero', sourceType: 'url', source: '', alt: '', sortOrder: 1, enabled: true }); setUploadFile(null); }}>
-                清空
-              </button>
-            </form>
-            <div className="admin-list">
-              {(bootstrap?.heroImages ?? []).concat(bootstrap?.detailImages ?? []).map((item) => (
-                <div className="admin-list-row" key={item.id}>
-                  <div>
-                    <strong>{item.section}</strong> {item.alt}
-                    <div className="muted">{item.resolvedUrl}</div>
-                  </div>
-                  <div className="admin-row-actions">
-                    <button type="button" onClick={() => setMediaDraft({ id: item.id, section: item.section, sourceType: item.sourceType, source: item.source, alt: item.alt, sortOrder: item.sortOrder, enabled: item.enabled })}>
-                      编辑
-                    </button>
-                    <button type="button" onClick={() => handleDeleteMedia(item.id)}>
-                      删除
-                    </button>
-                  </div>
+            {activePage === 'site-settings' ? (
+              <section className="admin-page-stack">
+                <div className="admin-page-title">
+                  <h1>站点配置</h1>
+                  <p>管理基础信息、展示内容及业务规则配置。</p>
                 </div>
-              ))}
-            </div>
-          </section>
+                <div className="admin-panel">
+                  <h2>基础信息</h2>
+                  {settings ? (
+                    <form className="admin-form admin-form-grid" onSubmit={handleSettingsSave}>
+                      <label className="admin-wide">店铺名 <input value={settings.shopName} onChange={(event) => setSettings({ ...settings, shopName: event.target.value })} /></label>
+                      <label>标题 <input value={settings.title} onChange={(event) => setSettings({ ...settings, title: event.target.value })} /></label>
+                      <label>副标题 <input value={settings.subtitle} onChange={(event) => setSettings({ ...settings, subtitle: event.target.value })} /></label>
+                      <label className="admin-wide">描述 <textarea value={settings.productDescription} onChange={(event) => setSettings({ ...settings, productDescription: event.target.value })} /></label>
+                      <label className="admin-wide">滚动文案 <input value={settings.marqueeText} onChange={(event) => setSettings({ ...settings, marqueeText: event.target.value })} /></label>
+                      <h2 className="admin-wide">业务规则</h2>
+                      <label>价格 (¥) <input type="number" value={settings.salePrice} onChange={(event) => setSettings({ ...settings, salePrice: Number(event.target.value) })} /></label>
+                      <label>原价 (¥) <input type="number" value={settings.originalPrice} onChange={(event) => setSettings({ ...settings, originalPrice: Number(event.target.value) })} /></label>
+                      <label>邮费 (¥) <input value={settings.shippingNote} onChange={(event) => setSettings({ ...settings, shippingNote: event.target.value })} /></label>
+                      <label>发货时间 <select value={settings.shippingTime} onChange={(event) => setSettings({ ...settings, shippingTime: event.target.value })}><option>24小时内发货</option><option>48小时内发货</option><option>72小时内发货</option></select></label>
+                      <h2 className="admin-wide">附加信息</h2>
+                      <label className="admin-wide">标签 <textarea value={settings.reviewTags.join('\n')} onChange={(event) => setSettings({ ...settings, reviewTags: event.target.value.split('\n').map((item) => item.trim()).filter(Boolean) })} /></label>
+                      <label className="admin-wide">提示语 (Tips) <input value={settings.reminder} onChange={(event) => setSettings({ ...settings, reminder: event.target.value })} /></label>
+                      <div className="admin-form-actions admin-wide">
+                        <button type="button" className="admin-secondary-button" onClick={() => bootstrap && setSettings(bootstrap.settings)}>重置</button>
+                        <button type="submit" className="admin-primary-button">修改配置</button>
+                      </div>
+                    </form>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
 
-          <section id="reviews" className="card pad admin-section">
-            <h2 className="admin-section-title">评价管理</h2>
-            <form className="admin-form admin-form-grid" onSubmit={handleReviewSave}>
-              <label>
-                用户名
-                <input value={reviewDraft.name} onChange={(event) => setReviewDraft({ ...reviewDraft, name: event.target.value })} />
-              </label>
-              <label>
-                置顶顺序
-                <input type="number" value={reviewDraft.homeOrder} onChange={(event) => setReviewDraft({ ...reviewDraft, homeOrder: Number(event.target.value) })} />
-              </label>
-              <label className="admin-wide">
-                评价内容
-                <textarea value={reviewDraft.content} onChange={(event) => setReviewDraft({ ...reviewDraft, content: event.target.value })} />
-              </label>
-              <label className="admin-wide">
-                图片地址，每行一个
-                <textarea value={reviewDraft.images} onChange={(event) => setReviewDraft({ ...reviewDraft, images: event.target.value })} />
-              </label>
-              <label>
-                首页展示
-                <input type="checkbox" checked={reviewDraft.featuredOnHome} onChange={(event) => setReviewDraft({ ...reviewDraft, featuredOnHome: event.target.checked })} />
-              </label>
-              <label>
-                启用
-                <input type="checkbox" checked={reviewDraft.enabled} onChange={(event) => setReviewDraft({ ...reviewDraft, enabled: event.target.checked })} />
-              </label>
-              <button type="submit" className="checkout-submit admin-submit">{reviewDraft.id ? '更新评价' : '新增评价'}</button>
-            </form>
-            <div className="admin-list">
-              {(bootstrap?.allReviews ?? []).map((item) => (
-                <div className="admin-list-row" key={item.id}>
-                  <div>
-                    <strong>{item.name}</strong>
-                    <div className="muted">{item.content}</div>
-                  </div>
-                  <div className="admin-row-actions">
-                    <button type="button" onClick={() => setReviewDraft({ id: item.id, name: item.name, content: item.content, images: item.images.join('\n'), featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled })}>
-                      编辑
-                    </button>
-                    <button type="button" onClick={() => handleDeleteReview(item.id)}>
-                      删除
-                    </button>
-                  </div>
+            {activePage === 'media-assets' ? (
+              <section className="admin-page-stack">
+                <div className="admin-title-row"><div className="admin-page-title"><h1>图片管理</h1><p>管理首页轮播图与详情页图片资源。</p></div><button type="button" className="admin-primary-button" onClick={() => setMediaDraft({ section: 'hero', sourceType: 'url', source: '', alt: '', sortOrder: mediaAssets.length + 1, enabled: true })}><Plus size={18} />添加图片</button></div>
+                <div className="admin-panel">
+                  <form className="admin-form admin-form-grid" onSubmit={handleMediaSave}>
+                    <label>区域 <select value={mediaDraft.section} onChange={(event) => setMediaDraft({ ...mediaDraft, section: event.target.value === 'detail' ? 'detail' : 'hero' })}><option value="hero">首页轮播</option><option value="detail">详情图片</option></select></label>
+                    <label>来源类型 <select value={mediaDraft.sourceType} onChange={(event) => setMediaDraft({ ...mediaDraft, sourceType: event.target.value === 'upload' ? 'upload' : 'url' })}><option value="url">URL</option><option value="upload">上传</option></select></label>
+                    <label>图片地址 <input value={mediaDraft.source} onChange={(event) => setMediaDraft({ ...mediaDraft, source: event.target.value })} placeholder="https://... 或 /img/..." /></label>
+                    <label>上传文件 <input type="file" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} /></label>
+                    <label>替代文本 <input value={mediaDraft.alt} onChange={(event) => setMediaDraft({ ...mediaDraft, alt: event.target.value })} /></label>
+                    <label>排序 <input type="number" value={mediaDraft.sortOrder} onChange={(event) => setMediaDraft({ ...mediaDraft, sortOrder: Number(event.target.value) })} /></label>
+                    <label className="admin-check"><input type="checkbox" checked={mediaDraft.enabled} onChange={(event) => setMediaDraft({ ...mediaDraft, enabled: event.target.checked })} />启用</label>
+                    <div className="admin-form-actions"><button type="submit" className="admin-primary-button">{mediaDraft.id ? '更新图片' : '新增图片'}</button><button type="button" className="admin-secondary-button" onClick={resetDrafts}>清空</button></div>
+                  </form>
                 </div>
-              ))}
-            </div>
-          </section>
+                <div className="admin-table-card"><table className="admin-table"><thead><tr><th>预览</th><th>区域</th><th>图片地址</th><th>排序</th><th>状态</th><th>操作</th></tr></thead><tbody>{mediaAssets.map((item) => (<tr key={item.id}><td>{item.resolvedUrl ? <img className="admin-thumb" src={item.resolvedUrl} alt={item.alt} /> : '无图片'}</td><td>{item.section === 'hero' ? '首页轮播' : '详情图片'}</td><td className="admin-ellipsis">{item.resolvedUrl}</td><td>{item.sortOrder}</td><td><span className={item.enabled ? 'admin-status-pill admin-status-pill--enabled' : 'admin-status-pill admin-status-pill--disabled'}>{item.enabled ? '启用' : '禁用'}</span></td><td><div className="admin-row-actions"><button type="button" onClick={() => setMediaDraft({ id: item.id, section: item.section, sourceType: item.sourceType, source: item.source, alt: item.alt, sortOrder: item.sortOrder, enabled: item.enabled })}>编辑</button><button type="button" onClick={() => handleDeleteMedia(item.id)}>删除</button></div></td></tr>))}</tbody></table></div>
+              </section>
+            ) : null}
 
-          <section id="floating-purchases" className="card pad admin-section">
-            <h2 className="admin-section-title">浮层文案管理</h2>
-            <form className="admin-form admin-form-grid" onSubmit={handlePurchaseSave}>
-              <label className="admin-wide">
-                文案
-                <input value={purchaseDraft.content} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, content: event.target.value })} />
-              </label>
-              <label>
-                排序
-                <input type="number" value={purchaseDraft.sortOrder} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, sortOrder: Number(event.target.value) })} />
-              </label>
-              <label>
-                启用
-                <input type="checkbox" checked={purchaseDraft.enabled} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, enabled: event.target.checked })} />
-              </label>
-              <button type="submit" className="checkout-submit admin-submit">{purchaseDraft.id ? '更新文案' : '新增文案'}</button>
-            </form>
-            <div className="admin-list">
-              {(bootstrap?.floatingPurchases ?? []).map((item) => (
-                <div className="admin-list-row" key={item.id}>
-                  <div>
-                    <strong>{item.content}</strong>
-                  </div>
-                  <div className="admin-row-actions">
-                    <button type="button" onClick={() => setPurchaseDraft({ id: item.id, content: item.content, enabled: item.enabled, sortOrder: item.sortOrder })}>
-                      编辑
-                    </button>
-                    <button type="button" onClick={() => handleDeletePurchase(item.id)}>
-                      删除
-                    </button>
-                  </div>
+            {activePage === 'reviews' ? (
+              <section className="admin-page-stack">
+                <div className="admin-title-row"><div className="admin-page-title"><h1>评价管理</h1><p>管理用户对产品或服务的评价信息。</p></div><button type="button" className="admin-primary-button" onClick={() => setReviewDraft({ name: '', content: '', images: '', featuredOnHome: true, homeOrder: allReviews.length + 1, enabled: true })}><Plus size={18} />添加评价</button></div>
+                <div className="admin-filter-panel"><label>评价状态<select value={reviewStatusFilter} onChange={(event) => setReviewStatusFilter(event.target.value as typeof reviewStatusFilter)}><option value="all">全部状态</option><option value="enabled">启用</option><option value="disabled">禁用</option></select></label><label>用户名搜索<span className="admin-input-with-icon"><Search size={18} /><input value={reviewQuery} onChange={(event) => setReviewQuery(event.target.value)} placeholder="输入用户名..." /></span></label><button type="button" className="admin-secondary-button" onClick={() => { setReviewStatusFilter('all'); setReviewQuery(''); }}>重置</button><button type="button" className="admin-primary-button"><SlidersHorizontal size={16} />查询</button></div>
+                <div className="admin-panel">
+                  <form className="admin-form admin-form-grid" onSubmit={handleReviewSave}>
+                    <label>用户名 <input value={reviewDraft.name} onChange={(event) => setReviewDraft({ ...reviewDraft, name: event.target.value })} /></label>
+                    <label>排序 <input type="number" value={reviewDraft.homeOrder} onChange={(event) => setReviewDraft({ ...reviewDraft, homeOrder: Number(event.target.value) })} /></label>
+                    <label className="admin-wide">内容 <textarea value={reviewDraft.content} onChange={(event) => setReviewDraft({ ...reviewDraft, content: event.target.value })} /></label>
+                    <label className="admin-wide">图片地址，每行一个 <textarea value={reviewDraft.images} onChange={(event) => setReviewDraft({ ...reviewDraft, images: event.target.value })} /></label>
+                    <label className="admin-check"><input type="checkbox" checked={reviewDraft.featuredOnHome} onChange={(event) => setReviewDraft({ ...reviewDraft, featuredOnHome: event.target.checked })} />首页展示</label>
+                    <label className="admin-check"><input type="checkbox" checked={reviewDraft.enabled} onChange={(event) => setReviewDraft({ ...reviewDraft, enabled: event.target.checked })} />启用</label>
+                    <div className="admin-form-actions"><button type="submit" className="admin-primary-button">{reviewDraft.id ? '更新评价' : '新增评价'}</button><button type="button" className="admin-secondary-button" onClick={resetDrafts}>清空</button></div>
+                  </form>
                 </div>
-              ))}
-            </div>
-          </section>
-        </main>
+                <div className="admin-table-card"><table className="admin-table"><thead><tr><th>用户名</th><th>内容</th><th>图片预览</th><th>首页展示</th><th>排序</th><th>状态</th><th>操作</th></tr></thead><tbody>{filteredReviews.map((item) => (<tr key={item.id}><td><div className="admin-user-cell"><div className="admin-avatar admin-avatar--small">{item.name.slice(0, 1).toUpperCase()}</div><span>{item.name}</span></div></td><td>{item.content}</td><td>{item.images[0] ? <img className="admin-thumb" src={item.images[0]} alt={`${item.name}评价图`} /> : '无图片'}</td><td><button type="button" className={item.featuredOnHome ? 'admin-switch admin-switch--on' : 'admin-switch'} onClick={async () => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome: !item.featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled }); await refresh(); }} aria-label={`${item.name}首页展示`} /></td><td><input className="admin-order-input" type="number" value={item.homeOrder} onChange={async (event) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome: item.featuredOnHome, homeOrder: Number(event.target.value), enabled: item.enabled }); await refresh(); }} /></td><td><button type="button" className={item.enabled ? 'admin-status-pill admin-status-pill--enabled' : 'admin-status-pill admin-status-pill--disabled'} onClick={async () => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: !item.enabled }); await refresh(); }}>{item.enabled ? '启用' : '禁用'}</button></td><td><div className="admin-row-actions"><button type="button" onClick={() => setReviewDraft({ id: item.id, name: item.name, content: item.content, images: item.images.join('\n'), featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled })}>编辑</button><button type="button" onClick={() => handleDeleteReview(item.id)}>删除</button></div></td></tr>))}</tbody></table><div className="admin-pagination">共 {filteredReviews.length} 条记录，当前第 1/1 页 <span><button type="button" disabled>‹</button><button type="button" className="active">1</button><button type="button" disabled>›</button></span></div></div>
+              </section>
+            ) : null}
+
+            {activePage === 'floating-purchases' ? (
+              <section className="admin-page-stack">
+                <div className="admin-page-title"><h1>浮层文案管理</h1><p>管理首页浮层购买提示与滚动文案。</p></div>
+                <div className="admin-panel"><form className="admin-form admin-form-grid" onSubmit={handlePurchaseSave}><label className="admin-wide">文案 <input value={purchaseDraft.content} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, content: event.target.value })} /></label><label>排序 <input type="number" value={purchaseDraft.sortOrder} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, sortOrder: Number(event.target.value) })} /></label><label className="admin-check"><input type="checkbox" checked={purchaseDraft.enabled} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, enabled: event.target.checked })} />启用</label><div className="admin-form-actions"><button type="submit" className="admin-primary-button">{purchaseDraft.id ? '更新文案' : '新增文案'}</button><button type="button" className="admin-secondary-button" onClick={resetDrafts}>清空</button></div></form></div>
+                <div className="admin-table-card"><table className="admin-table"><thead><tr><th>文案</th><th>排序</th><th>状态</th><th>操作</th></tr></thead><tbody>{(bootstrap?.floatingPurchases ?? []).map((item) => (<tr key={item.id}><td>{item.content}</td><td>{item.sortOrder}</td><td><span className={item.enabled ? 'admin-status-pill admin-status-pill--enabled' : 'admin-status-pill admin-status-pill--disabled'}>{item.enabled ? '启用' : '禁用'}</span></td><td><div className="admin-row-actions"><button type="button" onClick={() => setPurchaseDraft({ id: item.id, content: item.content, enabled: item.enabled, sortOrder: item.sortOrder })}>编辑</button><button type="button" onClick={() => handleDeletePurchase(item.id)}>删除</button></div></td></tr>))}</tbody></table></div>
+              </section>
+            ) : null}
+            {status ? <div className="admin-floating-status">{status}</div> : null}
+          </main>
+        </div>
       </div>
     </div>
   );
