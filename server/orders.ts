@@ -16,6 +16,7 @@ import type {
   ProductSkuInput,
 } from '../shared/order';
 import type { ContentStore } from './store';
+import { prismaClient } from './prismaStore';
 
 const phonePattern = /^1[3-9]\d{9}$/;
 const moneyPattern = /^\d{1,8}(\.\d{1,2})?$/;
@@ -63,19 +64,157 @@ function mapVariantToSku(variant: ProductVariant, siteId: number, index: number,
   };
 }
 
-function signParams(params: Record<string, string>, secret: string) {
-  const base = Object.keys(params)
-    .filter((key) => key !== 'sign' && key !== 'sign_type' && params[key] !== '')
-    .sort()
-    .map((key) => `${key}=${params[key]}`)
-    .join('&');
-  return createHash('md5').update(`${base}${secret}`).digest('hex');
+function decimalText(value: { toString: () => string } | string | number | null | undefined) {
+  if (value === null || value === undefined) return '0.00';
+  return typeof value === 'string' ? normalizeMoney(value) : normalizeMoney(value.toString());
 }
+
+function mapSkuRecord(record: {
+  id: number;
+  siteId: number;
+  skuCode: string;
+  name: string;
+  subtitle: string;
+  price: { toString: () => string } | string | number;
+  originalPrice: { toString: () => string } | string | number;
+  saleLabel: string;
+  highlight: string | null;
+  enabled: boolean;
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+}): ProductSku {
+  return {
+    id: record.id,
+    siteId: record.siteId,
+    skuCode: record.skuCode,
+    name: record.name,
+    subtitle: record.subtitle,
+    price: decimalText(record.price),
+    originalPrice: decimalText(record.originalPrice),
+    saleLabel: record.saleLabel,
+    highlight: record.highlight ?? undefined,
+    enabled: record.enabled,
+    sortOrder: record.sortOrder,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
+function mapOrderRecord(record: {
+  id: number;
+  orderNo: string;
+  siteId: number;
+  skuId: number | null;
+  skuCode: string;
+  skuName: string;
+  productName: string;
+  quantity: number;
+  unitAmount: { toString: () => string } | string | number;
+  totalAmount: { toString: () => string } | string | number;
+  recipientName: string;
+  phone: string;
+  address: string;
+  paymentChannel: string;
+  paymentStatus: string;
+  thirdPartyTradeNo: string | null;
+  paidAt: Date | null;
+  fulfillmentStatus: string;
+  logisticsCompany: string | null;
+  logisticsNo: string | null;
+  shippedAt: Date | null;
+  refundedAt: Date | null;
+  refundNote: string | null;
+  refundMarkedBy: string | null;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  deletionReason: string | null;
+  idempotencyKey: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): Order {
+  return {
+    id: record.id,
+    orderNo: record.orderNo,
+    siteId: record.siteId,
+    skuId: record.skuId,
+    skuCode: record.skuCode,
+    skuName: record.skuName,
+    productName: record.productName,
+    quantity: record.quantity,
+    unitAmount: decimalText(record.unitAmount),
+    totalAmount: decimalText(record.totalAmount),
+    recipientName: record.recipientName,
+    phone: record.phone,
+    address: record.address,
+    paymentChannel: record.paymentChannel as Order['paymentChannel'],
+    paymentStatus: record.paymentStatus as Order['paymentStatus'],
+    thirdPartyTradeNo: record.thirdPartyTradeNo ?? undefined,
+    paidAt: record.paidAt?.toISOString(),
+    fulfillmentStatus: record.fulfillmentStatus as Order['fulfillmentStatus'],
+    logisticsCompany: record.logisticsCompany ?? undefined,
+    logisticsNo: record.logisticsNo ?? undefined,
+    shippedAt: record.shippedAt?.toISOString(),
+    refundedAt: record.refundedAt?.toISOString(),
+    refundNote: record.refundNote ?? undefined,
+    refundMarkedBy: record.refundMarkedBy ?? undefined,
+    deletedAt: record.deletedAt?.toISOString(),
+    deletedBy: record.deletedBy ?? undefined,
+    deletionReason: record.deletionReason ?? undefined,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
+function mapPaymentSettingsRecord(record: {
+  gatewayUrl: string;
+  merchantId: string;
+  encryptedSecret: string;
+  enabledChannels: unknown;
+  notifyUrl: string;
+  returnUrl: string;
+  updatedAt: Date;
+}): PaymentSettings {
+  const enabledChannels = Array.isArray(record.enabledChannels) ? record.enabledChannels.filter((item): item is pNf => item === 'alipay' || item === 'wechat') : [];
+  return {
+    gatewayUrl: record.gatewayUrl,
+    merchantId: record.merchantId,
+    enabledChannels,
+    notifyUrl: record.notifyUrl,
+    returnUrl: record.returnUrl,
+    secretMasked: maskSecret(record.encryptedSecret),
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
+function mapLogRecord(record: { id: number; orderId: number | null; action: string; summary: string; actor: string; createdAt: Date }): OrderTimelineItem {
+  return {
+    id: record.id,
+    action: record.action,
+    summary: record.summary,
+    actor: record.actor,
+    createdAt: record.createdAt.toISOString(),
+  };
+}
+
+function signParams(params: Record<string, string>, secret: string) {
 
 function maskSecret(secret: string) {
   if (!secret) return '';
   if (secret.length <= 6) return '******';
   return `${secret.slice(0, 3)}******${secret.slice(-3)}`;
+}
+
+function encodeSecret(secret: string) {
+  return Buffer.from(secret, 'utf8').toString('base64');
+}
+
+function decodeSecret(secret: string) {
+  try {
+    return Buffer.from(secret, 'base64').toString('utf8');
+  } catch {
+    return secret;
+  }
 }
 
 function maskPhone(phone: string) {
@@ -107,7 +246,7 @@ export class OrderService {
   private orderSeq = 1000;
   private logSeq = 1;
   private clients = new Set<Response>();
-  private skuSignatures = new Map<number, string>();
+  private readonly persistent = Boolean(process.env.DATABASE_URL);
   private paymentSettings: PaymentSettingsInput & { updatedAt: string } = {
     gatewayUrl: process.env.EPAY_GATEWAY_URL ?? 'https://pay.example.test/submit.php',
     merchantId: process.env.EPAY_MERCHANT_ID ?? 'demo',
@@ -118,70 +257,269 @@ export class OrderService {
     updatedAt: nowIso(),
   };
 
+
   constructor(private store: ContentStore) {}
 
+  private ready?: Promise<void>;
+
+  private async ensureReady() {
+    if (!this.persistent) return;
+    if (!this.ready) this.ready = this.ensurePersistentSchema();
+    await this.ready;
+  }
+
+  private async ensurePersistentSchema() {
+    await prismaClient.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "ProductSku" (
+        "id" SERIAL PRIMARY KEY,
+        "siteId" INTEGER NOT NULL,
+        "skuCode" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "subtitle" TEXT NOT NULL,
+        "price" NUMERIC(10,2) NOT NULL,
+        "originalPrice" NUMERIC(10,2) NOT NULL,
+        "saleLabel" TEXT NOT NULL,
+        "highlight" TEXT,
+        "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+        "sortOrder" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await prismaClient.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "PaymentSettings" (
+        "id" SERIAL PRIMARY KEY,
+        "siteId" INTEGER NOT NULL UNIQUE,
+        "gatewayUrl" TEXT NOT NULL,
+        "merchantId" TEXT NOT NULL,
+        "encryptedSecret" TEXT NOT NULL,
+        "enabledChannels" JSONB NOT NULL,
+        "notifyUrl" TEXT NOT NULL,
+        "returnUrl" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await prismaClient.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Order" (
+        "id" SERIAL PRIMARY KEY,
+        "orderNo" TEXT NOT NULL UNIQUE,
+        "siteId" INTEGER NOT NULL,
+        "skuId" INTEGER,
+        "skuCode" TEXT NOT NULL,
+        "skuName" TEXT NOT NULL,
+        "productName" TEXT NOT NULL,
+        "quantity" INTEGER NOT NULL,
+        "unitAmount" NUMERIC(10,2) NOT NULL,
+        "totalAmount" NUMERIC(10,2) NOT NULL,
+        "recipientName" TEXT NOT NULL,
+        "phone" TEXT NOT NULL,
+        "address" TEXT NOT NULL,
+        "paymentChannel" TEXT NOT NULL,
+        "paymentStatus" TEXT NOT NULL DEFAULT 'UNPAID',
+        "thirdPartyTradeNo" TEXT,
+        "paidAt" TIMESTAMP(3),
+        "fulfillmentStatus" TEXT NOT NULL DEFAULT 'WAIT_SHIP',
+        "logisticsCompany" TEXT,
+        "logisticsNo" TEXT,
+        "shippedAt" TIMESTAMP(3),
+        "refundedAt" TIMESTAMP(3),
+        "refundNote" TEXT,
+        "refundMarkedBy" TEXT,
+        "deletedAt" TIMESTAMP(3),
+        "deletedBy" TEXT,
+        "deletionReason" TEXT,
+        "idempotencyKey" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await prismaClient.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "OperationLog" (
+        "id" SERIAL PRIMARY KEY,
+        "siteId" INTEGER NOT NULL,
+        "orderId" INTEGER,
+        "action" TEXT NOT NULL,
+        "summary" TEXT NOT NULL,
+        "actor" TEXT NOT NULL,
+        "meta" JSONB,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await prismaClient.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "ProductSku_siteId_skuCode_key" ON "ProductSku" ("siteId", "skuCode")');
+    await prismaClient.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "ProductSku_siteId_enabled_idx" ON "ProductSku" ("siteId", "enabled")');
+    await prismaClient.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "Order_siteId_idempotencyKey_key" ON "Order" ("siteId", "idempotencyKey")');
+    await prismaClient.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "Order_siteId_createdAt_idx" ON "Order" ("siteId", "createdAt")');
+    await prismaClient.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "Order_siteId_paymentStatus_idx" ON "Order" ("siteId", "paymentStatus")');
+    await prismaClient.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "Order_siteId_fulfillmentStatus_idx" ON "Order" ("siteId", "fulfillmentStatus")');
+    await prismaClient.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "Order_siteId_deletedAt_idx" ON "Order" ("siteId", "deletedAt")');
+    await prismaClient.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "OperationLog_siteId_createdAt_idx" ON "OperationLog" ("siteId", "createdAt")');
+    await prismaClient.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "OperationLog_orderId_idx" ON "OperationLog" ("orderId")');
+  }
+
   async ensureSiteSkus(siteId?: number) {
+    await this.ensureReady();
     const site = siteId ? undefined : await this.store.getActiveSite();
     const resolvedSiteId = siteId ?? site!.id;
     const bootstrap = await this.store.getBootstrap(resolvedSiteId);
     const variants = bootstrap.settings.productVariants;
-    const signature = JSON.stringify(variants);
-    if (!this.skus.has(resolvedSiteId)) {
-      const timestamp = nowIso();
-      this.skus.set(resolvedSiteId, variants.map((variant, index) => mapVariantToSku(variant, resolvedSiteId, index, timestamp)));
-      this.skuSeq = Math.max(this.skuSeq, ...this.skus.get(resolvedSiteId)!.map((item) => item.id)) + 1;
-      this.skuSignatures.set(resolvedSiteId, signature);
-    } else if (this.skuSignatures.get(resolvedSiteId) !== signature) {
-      const current = this.skus.get(resolvedSiteId)!;
-      const timestamp = nowIso();
-      const byCode = new Map(current.map((sku) => [sku.skuCode, sku]));
-      const next = variants.map((variant, index) => {
-        const existing = byCode.get(variant.id);
-        const mapped = mapVariantToSku(variant, resolvedSiteId, index, timestamp);
-        return existing ? { ...mapped, id: existing.id, enabled: existing.enabled, createdAt: existing.createdAt } : mapped;
-      });
-      this.skus.set(resolvedSiteId, next);
-      this.skuSignatures.set(resolvedSiteId, signature);
+    if (!this.persistent) {
+      if (!this.skus.has(resolvedSiteId)) {
+        const timestamp = nowIso();
+        this.skus.set(resolvedSiteId, variants.map((variant, index) => mapVariantToSku(variant, resolvedSiteId, index, timestamp)));
+        this.skuSeq = Math.max(this.skuSeq, ...this.skus.get(resolvedSiteId)!.map((item) => item.id)) + 1;
+      } else if (JSON.stringify(this.skus.get(resolvedSiteId)!.map((sku) => [sku.skuCode, sku.name, sku.subtitle, sku.price, sku.originalPrice, sku.saleLabel, sku.highlight, sku.sortOrder])) !== JSON.stringify(variants.map((variant) => [variant.id, variant.name, variant.subtitle, variant.price.toFixed(2), variant.originalPrice.toFixed(2), variant.saleLabel, variant.highlight, variants.indexOf(variant) + 1]))) {
+        const current = this.skus.get(resolvedSiteId)!;
+        const timestamp = nowIso();
+        const byCode = new Map(current.map((sku) => [sku.skuCode, sku]));
+        const next = variants.map((variant, index) => {
+          const existing = byCode.get(variant.id);
+          const mapped = mapVariantToSku(variant, resolvedSiteId, index, timestamp);
+          return existing ? { ...mapped, id: existing.id, enabled: existing.enabled, createdAt: existing.createdAt } : mapped;
+        });
+        this.skus.set(resolvedSiteId, next);
+      }
+      return this.skus.get(resolvedSiteId)!;
     }
-    return this.skus.get(resolvedSiteId)!;
+    const existing = await prismaClient.productSku.findMany({ where: { siteId: resolvedSiteId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+    const existingByCode = new Map(existing.map((sku) => [sku.skuCode, sku]));
+    const nextCodes = new Set(variants.map((variant) => variant.id));
+    const mapped: ProductSku[] = [];
+    for (const [index, variant] of variants.entries()) {
+      const current = existingByCode.get(variant.id);
+      const payload = mapVariantToSku(variant, resolvedSiteId, index, nowIso());
+      if (current) {
+        const updated = await prismaClient.productSku.update({
+          where: { id: current.id },
+          data: {
+            skuCode: payload.skuCode,
+            name: payload.name,
+            subtitle: payload.subtitle,
+            price: payload.price,
+            originalPrice: payload.originalPrice,
+            saleLabel: payload.saleLabel,
+            highlight: payload.highlight ?? null,
+            enabled: current.enabled,
+            sortOrder: payload.sortOrder,
+          },
+        });
+        mapped.push(mapSkuRecord(updated));
+      } else {
+        const created = await prismaClient.productSku.create({
+          data: {
+            siteId: resolvedSiteId,
+            skuCode: payload.skuCode,
+            name: payload.name,
+            subtitle: payload.subtitle,
+            price: payload.price,
+            originalPrice: payload.originalPrice,
+            saleLabel: payload.saleLabel,
+            highlight: payload.highlight ?? null,
+            enabled: true,
+            sortOrder: payload.sortOrder,
+          },
+        });
+        mapped.push(mapSkuRecord(created));
+      }
+    }
+    const staleIds = existing.filter((sku) => !nextCodes.has(sku.skuCode)).map((sku) => sku.id);
+    if (staleIds.length) {
+      await prismaClient.productSku.deleteMany({ where: { id: { in: staleIds } } });
+    }
+    return mapped;
   }
 
   async listSkus(siteId?: number, enabledOnly = false) {
-    const skus = await this.ensureSiteSkus(siteId);
-    return skus.filter((sku) => !enabledOnly || sku.enabled).sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    if (!this.persistent) {
+      const skus = await this.ensureSiteSkus(siteId);
+      return skus.filter((sku) => !enabledOnly || sku.enabled).sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    }
+    const resolvedSiteId = siteId ?? (await this.store.getActiveSite()).id;
+    await this.ensureSiteSkus(resolvedSiteId);
+    const records = await prismaClient.productSku.findMany({
+      where: { siteId: resolvedSiteId, ...(enabledOnly ? { enabled: true } : {}) },
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    });
+    return records.map(mapSkuRecord);
   }
 
   async createSku(input: ProductSkuInput, actor = 'admin') {
+    if (!this.persistent) {
+      const site = await this.store.getActiveSite();
+      const skus = await this.ensureSiteSkus(site.id);
+      if (skus.some((sku) => sku.skuCode === input.skuCode.trim())) throw new Error('sku code exists');
+      const timestamp = nowIso();
+      const sku: ProductSku = { ...this.normalizeSkuInput(input), id: this.skuSeq++, siteId: site.id, createdAt: timestamp, updatedAt: timestamp };
+      skus.push(sku);
+      this.log('sku_created', `SKU ${sku.skuCode} created`, actor, undefined, { skuId: sku.id });
+      return sku;
+    }
     const site = await this.store.getActiveSite();
-    const skus = await this.ensureSiteSkus(site.id);
-    if (skus.some((sku) => sku.skuCode === input.skuCode.trim())) throw new Error('sku code exists');
-    const timestamp = nowIso();
-    const sku: ProductSku = { ...this.normalizeSkuInput(input), id: this.skuSeq++, siteId: site.id, createdAt: timestamp, updatedAt: timestamp };
-    skus.push(sku);
-    this.log('sku_created', `SKU ${sku.skuCode} created`, actor, undefined, { skuId: sku.id });
-    return sku;
+    const payload = this.normalizeSkuInput(input);
+    const created = await prismaClient.productSku.create({
+      data: {
+        siteId: site.id,
+        skuCode: payload.skuCode,
+        name: payload.name,
+        subtitle: payload.subtitle,
+        price: payload.price,
+        originalPrice: payload.originalPrice,
+        saleLabel: payload.saleLabel,
+        highlight: payload.highlight ?? null,
+        enabled: payload.enabled,
+        sortOrder: payload.sortOrder,
+      },
+    });
+    this.log('sku_created', `SKU ${created.skuCode} created`, actor, undefined, { skuId: created.id });
+    return mapSkuRecord(created);
   }
 
   async updateSku(id: number, input: ProductSkuInput, actor = 'admin') {
-    const site = await this.store.getActiveSite();
-    const skus = await this.ensureSiteSkus(site.id);
-    const index = skus.findIndex((sku) => sku.id === id);
-    if (index < 0) return null;
-    if (skus.some((sku) => sku.id !== id && sku.skuCode === input.skuCode.trim())) throw new Error('sku code exists');
-    const previous = skus[index];
-    const next = { ...previous, ...this.normalizeSkuInput(input), updatedAt: nowIso() };
-    skus[index] = next;
-    this.log('sku_updated', `SKU ${next.skuCode} updated`, actor, undefined, { skuId: id, priceChanged: previous.price !== next.price });
-    return next;
+    if (!this.persistent) {
+      const site = await this.store.getActiveSite();
+      const skus = await this.ensureSiteSkus(site.id);
+      const index = skus.findIndex((sku) => sku.id === id);
+      if (index < 0) return null;
+      if (skus.some((sku) => sku.id !== id && sku.skuCode === input.skuCode.trim())) throw new Error('sku code exists');
+      const previous = skus[index];
+      const next = { ...previous, ...this.normalizeSkuInput(input), updatedAt: nowIso() };
+      skus[index] = next;
+      this.log('sku_updated', `SKU ${next.skuCode} updated`, actor, undefined, { skuId: id, priceChanged: previous.price !== next.price });
+      return next;
+    }
+    const payload = this.normalizeSkuInput(input);
+    const updated = await prismaClient.productSku.update({
+      where: { id },
+      data: {
+        skuCode: payload.skuCode,
+        name: payload.name,
+        subtitle: payload.subtitle,
+        price: payload.price,
+        originalPrice: payload.originalPrice,
+        saleLabel: payload.saleLabel,
+        highlight: payload.highlight ?? null,
+        enabled: payload.enabled,
+        sortOrder: payload.sortOrder,
+      },
+    }).catch(() => null);
+    if (!updated) return null;
+    this.log('sku_updated', `SKU ${updated.skuCode} updated`, actor, undefined, { skuId: id });
+    return mapSkuRecord(updated);
   }
 
   async disableSku(id: number, actor = 'admin') {
-    const site = await this.store.getActiveSite();
-    const skus = await this.ensureSiteSkus(site.id);
-    const index = skus.findIndex((sku) => sku.id === id);
-    if (index < 0) return false;
-    skus[index] = { ...skus[index], enabled: false, updatedAt: nowIso() };
-    this.log('sku_disabled', `SKU ${skus[index].skuCode} disabled`, actor, undefined, { skuId: id });
+    if (!this.persistent) {
+      const site = await this.store.getActiveSite();
+      const skus = await this.ensureSiteSkus(site.id);
+      const index = skus.findIndex((sku) => sku.id === id);
+      if (index < 0) return false;
+      skus[index] = { ...skus[index], enabled: false, updatedAt: nowIso() };
+      this.log('sku_disabled', `SKU ${skus[index].skuCode} disabled`, actor, undefined, { skuId: id });
+      return true;
+    }
+    const updated = await prismaClient.productSku.update({ where: { id }, data: { enabled: false } }).catch(() => null);
+    if (!updated) return false;
+    this.log('sku_disabled', `SKU ${updated.skuCode} disabled`, actor, undefined, { skuId: id });
     return true;
   }
 
@@ -331,30 +669,76 @@ export class OrderService {
     return { ok: true, order, changed: true };
   }
 
-  getPaymentSettings(): PaymentSettings {
-    return {
-      gatewayUrl: this.paymentSettings.gatewayUrl,
-      merchantId: this.paymentSettings.merchantId,
-      enabledChannels: this.paymentSettings.enabledChannels,
-      notifyUrl: this.paymentSettings.notifyUrl,
-      returnUrl: this.paymentSettings.returnUrl,
-      secretMasked: maskSecret(this.paymentSettings.merchantSecret ?? ''),
-      updatedAt: this.paymentSettings.updatedAt,
-    };
+  async getPaymentSettings(): Promise<PaymentSettings> {
+    await this.ensureReady();
+    if (!this.persistent) {
+      return {
+        gatewayUrl: this.paymentSettings.gatewayUrl,
+        merchantId: this.paymentSettings.merchantId,
+        enabledChannels: this.paymentSettings.enabledChannels,
+        notifyUrl: this.paymentSettings.notifyUrl,
+        returnUrl: this.paymentSettings.returnUrl,
+        secretMasked: maskSecret(this.paymentSettings.merchantSecret ?? ''),
+        updatedAt: this.paymentSettings.updatedAt,
+      };
+    }
+    const siteId = (await this.store.getActiveSite()).id;
+    const existing = await prismaClient.paymentSettings.findUnique({ where: { siteId } });
+    if (!existing) {
+      const created = await prismaClient.paymentSettings.create({
+        data: {
+          siteId,
+          gatewayUrl: this.paymentSettings.gatewayUrl,
+          merchantId: this.paymentSettings.merchantId,
+          encryptedSecret: encodeSecret(this.paymentSettings.merchantSecret ?? ''),
+          enabledChannels: this.paymentSettings.enabledChannels,
+          notifyUrl: this.paymentSettings.notifyUrl,
+          returnUrl: this.paymentSettings.returnUrl,
+        },
+      });
+      return mapPaymentSettingsRecord(created);
+    }
+    return mapPaymentSettingsRecord(existing);
   }
 
-  updatePaymentSettings(input: PaymentSettingsInput, actor = 'admin') {
-    this.paymentSettings = {
-      gatewayUrl: input.gatewayUrl.trim(),
-      merchantId: input.merchantId.trim(),
-      merchantSecret: input.merchantSecret?.trim() || this.paymentSettings.merchantSecret,
-      enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat'),
-      notifyUrl: input.notifyUrl.trim(),
-      returnUrl: input.returnUrl.trim(),
-      updatedAt: nowIso(),
-    };
+  async updatePaymentSettings(input: PaymentSettingsInput, actor = 'admin') {
+    if (!this.persistent) {
+      this.paymentSettings = {
+        gatewayUrl: input.gatewayUrl.trim(),
+        merchantId: input.merchantId.trim(),
+        merchantSecret: input.merchantSecret?.trim() || this.paymentSettings.merchantSecret,
+        enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat'),
+        notifyUrl: input.notifyUrl.trim(),
+        returnUrl: input.returnUrl.trim(),
+        updatedAt: nowIso(),
+      };
+      this.log('payment_settings_updated', 'Payment settings updated', actor);
+      return this.getPaymentSettings();
+    }
+    const siteId = (await this.store.getActiveSite()).id;
+    const current = await prismaClient.paymentSettings.findUnique({ where: { siteId } });
+    const updated = await prismaClient.paymentSettings.upsert({
+      where: { siteId },
+      update: {
+        gatewayUrl: input.gatewayUrl.trim(),
+        merchantId: input.merchantId.trim(),
+        encryptedSecret: input.merchantSecret ? encodeSecret(input.merchantSecret.trim()) : current?.encryptedSecret ?? encodeSecret(this.paymentSettings.merchantSecret ?? ''),
+        enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat'),
+        notifyUrl: input.notifyUrl.trim(),
+        returnUrl: input.returnUrl.trim(),
+      },
+      create: {
+        siteId,
+        gatewayUrl: input.gatewayUrl.trim(),
+        merchantId: input.merchantId.trim(),
+        encryptedSecret: encodeSecret(input.merchantSecret ?? this.paymentSettings.merchantSecret ?? ''),
+        enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat'),
+        notifyUrl: input.notifyUrl.trim(),
+        returnUrl: input.returnUrl.trim(),
+      },
+    });
     this.log('payment_settings_updated', 'Payment settings updated', actor);
-    return this.getPaymentSettings();
+    return mapPaymentSettingsRecord(updated);
   }
 
   exportOrders(filters: OrderFilters, columns: string[]) {

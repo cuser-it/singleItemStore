@@ -140,7 +140,9 @@ img {
 .shop-line > span:first-child {
   min-width: 0;
 }
-
+.product-hero__top{
+  font-size: 12px;
+}
 .official {
   display: inline-flex;
   align-items: center;
@@ -149,7 +151,6 @@ img {
   border-radius: 3px;
   background: rgb(48, 193, 153);
   color: #fff;
-  font-size: 12px;
   white-space: nowrap;
 }
 

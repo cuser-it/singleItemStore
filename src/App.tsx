@@ -367,18 +367,7 @@ function PublicApp() {
             <span>{settings.serviceNote}</span>
           </div>
           <h1 className="title">{titleText(settings)}</h1>
-          <p className="product-hero__subtitle">{settings.subtitle}</p>
-          <div className="product-hero__highlight">{settings.highlight}</div>
-          <div className="product-hero__stats">
-            <div><strong>{settings.soldText}</strong><span>销量</span></div>
-            <div><strong>¥{selectedSku.price.toFixed(2)}</strong><span>{selectedSku.saleLabel}</span></div>
-            <div><strong>{settings.heroImageCount}</strong><span>主图</span></div>
-          </div>
-          <div className="product-hero__chips">
-            {settings.guarantee.map((item) => (
-              <span key={item}>{item}</span>
-            ))}
-          </div>
+
         </section>
 
         <section className="card info-card" aria-label="商品说明">
