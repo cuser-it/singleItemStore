@@ -10,22 +10,8 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: /参茸 养心益肾胶囊/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /宝贝评价\(12083\).*查看全部/ })).toBeInTheDocument();
     expect(screen.getByText('产品详情')).toBeInTheDocument();
-    expect(screen.getByText('用户下单')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '立即发货' })).toBeInTheDocument();
-  });
-
-  it('updates sku and quantity totals', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    const buySection = document.querySelector('#buy');
-    expect(buySection).not.toBeNull();
-
-    await user.click(within(buySection as HTMLElement).getByRole('radio', { name: '3盒 稳定装-持续输出' }));
-    await user.click(within(buySection as HTMLElement).getByRole('button', { name: '增加数量' }));
-
-    expect(within(buySection as HTMLElement).getByText('¥536.0')).toBeInTheDocument();
-    expect(screen.getByText('券后¥268.0起')).toBeInTheDocument();
+    expect(document.querySelector('#buy')).toBeNull();
   });
 
   it('opens review and checkout sheets', async () => {

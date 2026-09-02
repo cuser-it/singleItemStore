@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
 const asset = (name: string) => `/cankao-assets/${name}`;
 
@@ -133,7 +133,6 @@ export function App() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [toast, setToast] = useState('');
   const [purchaseIndex, setPurchaseIndex] = useState(0);
-  const buyRef = useRef<HTMLElement | null>(null);
 
   const selectedSku = useMemo(() => skus.find((sku) => sku.id === selectedSkuId) ?? skus[0], [selectedSkuId]);
   const total = selectedSku.price * quantity;
@@ -218,39 +217,6 @@ export function App() {
           {detailImages.map((image, index) => <p key={image}><img src={image} alt={`详情图${index + 1}`} loading="lazy" /></p>)}
         </section>
 
-        <div className="section-title">用户下单</div>
-        <section className="card" id="buy" ref={buyRef}>
-          <div className="buy-title">健康生活</div>
-          <div className="specs">
-            <div className="field-title">规格</div>
-            <div className="spec-list" role="radiogroup" aria-label="规格">
-              {skus.map((sku) => (
-                <button className={sku.id === selectedSkuId ? 'spec active' : 'spec'} key={sku.id} type="button" role="radio" aria-checked={sku.id === selectedSkuId} onClick={() => setSelectedSkuId(sku.id)}>
-                  {sku.label}
-                </button>
-              ))}
-            </div>
-            <div className="amount-row"><b>数 量</b><Stepper value={quantity} onDecrease={() => setQuantity((current) => clampQty(current - 1))} onIncrease={() => setQuantity((current) => current + 1)} /></div>
-            <div className="amount-row"><b>金 额</b><div className="money">¥{total.toFixed(1)}</div></div>
-          </div>
-
-          <form className="form" onSubmit={handleSubmit}>
-            <div className="form-row"><label htmlFor="name">姓 名</label><input id="name" name="name" placeholder="请填写姓名" /></div>
-            <div className="form-row"><label htmlFor="age">年 龄</label><input id="age" name="age" inputMode="numeric" maxLength={3} placeholder="请填写年龄（岁）" /></div>
-            <div className="form-row"><label htmlFor="phone">手机号码</label><input id="phone" name="phone" inputMode="tel" maxLength={11} placeholder="请填写手机号码" /></div>
-            <div className="form-row"><label>所在地区</label><div className="area-grid"><select><option>请选择省份</option><option>北京市</option><option>广东省</option><option>浙江省</option><option>四川省</option></select><select><option>请选择城市</option><option>北京市</option><option>广州市</option><option>杭州市</option><option>成都市</option></select><select><option>请选择区县</option><option>朝阳区</option><option>天河区</option><option>西湖区</option><option>锦江区</option></select></div></div>
-            <div className="form-row"><label htmlFor="address">详细地址</label><input id="address" name="address" placeholder="请填写详细地址" /></div>
-            <div className="form-row"><label htmlFor="message">留 言</label><textarea id="message" name="message" /></div>
-            <div className="field-title">付款方式</div>
-            <div className="pay-list" role="radiogroup" aria-label="付款方式">
-              <button className={payment === 'wechat' ? 'pay active' : 'pay'} type="button" onClick={() => setPayment('wechat')}>微信付款</button>
-              <button className={payment === 'cod' ? 'pay active' : 'pay'} type="button" onClick={() => setPayment('cod')}>货到付款</button>
-            </div>
-            <div className="pay-tip">{payment === 'cod' ? '温馨提示：选择货到付款在家等快递公司送货上门，先验货后付款！' : '温馨提示：全球领先的第三方支付平台，在线支付，安全可靠！'}</div>
-            <button className="submit" type="submit">立即抢购，获取优惠</button>
-            <div className="privacy"><span className="check">✓</span><span>订单信息将用于商家发货,勾选即代表同意 <span className="link-blue">《个人隐私保护条款》</span></span></div>
-          </form>
-        </section>
 
         <section className="card">
           <div className="buy-title">最新抢购</div>
