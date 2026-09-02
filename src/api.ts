@@ -28,8 +28,6 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
 
   return (await response.json()) as T;
 }
-  return (await response.json()) as T;
-}
 
 export async function fetchPublicBootstrap() {
   return requestJson<PublicBootstrap>('/api/public/bootstrap');
