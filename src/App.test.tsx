@@ -122,8 +122,9 @@ describe('App', () => {
     await user.type(screen.getByPlaceholderText('输入用户名...'), defaultBootstrap.allReviews[0].name);
     expect(screen.getByText(defaultBootstrap.allReviews[0].content)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /站点配置/ }));
-    await user.click(screen.getByRole('button', { name: '修改配置' }));
+    await user.click(screen.getByRole('menuitem', { name: /站点配置/ }));
+    await user.click(screen.getByRole('button', { name: '打开编辑' }));
+    await user.click(screen.getByRole('button', { name: '保存配置' }));
 
     expect(saveSiteSettings).toHaveBeenCalledWith(expect.objectContaining({ shopName: defaultBootstrap.settings.shopName }));
   });

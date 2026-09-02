@@ -1478,6 +1478,46 @@ img {
   }
 }
 
+/* Ant Design admin workspace */
+.antd-admin-layout { min-height: 100vh; background: #f3f5f8; }
+.antd-admin-layout .ant-layout-sider { border-right: 1px solid #e3e8f0; }
+.antd-admin-brand { height: 120px; display: flex; align-items: center; gap: 12px; padding: 24px; border-bottom: 1px solid #e3e8f0; }
+.antd-admin-brand strong, .antd-admin-brand span, .antd-admin-account strong, .antd-admin-account span { display: block; }
+.antd-admin-brand strong { color: #0066bd; font-size: 22px; }
+.antd-admin-brand span { margin-top: 4px; color: #64748b; font-size: 13px; }
+.antd-admin-logo { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 7px; background: #168bff; color: #fff; font-size: 21px; }
+.antd-admin-layout .ant-menu { border-inline-end: 0; padding-top: 18px; }
+.antd-admin-layout .ant-menu-item { margin-block: 4px; border-radius: 0; }
+.antd-admin-account { min-height: 82px; display: flex; align-items: center; gap: 12px; margin-top: auto; padding: 16px 24px; border-top: 1px solid #e3e8f0; }
+.antd-admin-account strong { font-weight: 600; }
+.antd-admin-account span { margin-top: 3px; color: #64748b; font-size: 12px; }
+.antd-admin-header { height: 76px; display: flex; align-items: center; justify-content: space-between; padding-inline: 30px; border-bottom: 1px solid #e3e8f0; background: #fbfbff; }
+.antd-admin-header .ant-typography { margin: 0; }
+.antd-admin-content { min-height: calc(100vh - 76px); padding: 32px; }
+.antd-admin-content > .ant-spin { display: block; margin: 100px auto; }
+.admin-stat-row { margin-top: 28px; }
+.admin-stat-row .ant-card, .admin-quick-row .ant-card, .admin-content-card, .admin-filter-card { border-color: #e1e6f0; border-radius: 8px; }
+.admin-stat-row .ant-card { min-height: 142px; }
+.admin-stat-row .ant-statistic-title { color: #475569; }
+.admin-stat-row .ant-statistic-content { margin-top: 14px; font-weight: 700; }
+.admin-quick-row { margin-top: 24px; }
+.admin-content-card { margin-top: 22px; }
+.admin-filter-card { margin-top: 22px; }
+.admin-page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.admin-page-heading .ant-typography { margin: 0; }
+.admin-table-thumb { width: 52px; height: 52px; display: block; border-radius: 4px; object-fit: cover; border: 1px solid #e5e7eb; }
+.admin-clickable-tag { cursor: pointer; }
+.admin-loading, .admin-login-page { min-height: 100vh; display: grid; place-items: center; background: #f3f5f8; }
+.admin-login-card { width: min(420px, calc(100% - 32px)); }
+.admin-login-card form { display: grid; gap: 14px; margin-top: 22px; }
+.admin-login-card label { display: grid; gap: 7px; color: #374151; }
+@media (max-width: 760px) {
+  .antd-admin-header { padding-inline: 16px; }
+  .antd-admin-content { padding: 20px 16px; }
+  .admin-page-heading { flex-direction: column; }
+  .antd-admin-header .ant-btn-link { padding-inline: 4px; }
+}
+
 @media (max-width: 360px) {
   .title {
     font-size: 16px;
