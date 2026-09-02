@@ -37,6 +37,7 @@ yarn-error.log*
 pnpm-debug.log*
 *.pid
 *.pid.lock
+storage/
 
 # Test and tool caches
 .eslintcache

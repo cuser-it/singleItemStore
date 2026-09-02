@@ -3,7 +3,6 @@ import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import cors from 'cors';
 import path from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import {
   defaultBootstrap,
@@ -19,11 +18,13 @@ import {
   sortByOrder,
 } from '../shared/site';
 import { createMemoryStore, type ContentStore } from './store';
+import { createUploadStorageFromEnv, type UploadStorage } from './uploadStorage';
 
 export type CreateAppOptions = {
   store?: ContentStore;
   adminPassword?: string;
   uploadDir?: string;
+  uploadStorage?: UploadStorage;
 };
 
 const jsonParser = express.json({ limit: '2mb' });
@@ -132,13 +133,8 @@ function ensureAuthed(req: Request, res: Response, sessions: Map<string, true>) 
   return true;
 }
 
-async function storeUpload(uploadDir: string, file: Express.Multer.File) {
-  await mkdir(uploadDir, { recursive: true });
-  const ext = path.extname(file.originalname) || '.bin';
-  const fileName = `${randomUUID()}${ext}`;
-  const fullPath = path.join(uploadDir, fileName);
-  await writeFile(fullPath, file.buffer);
-  return `/img/${fileName}`;
+function createSafeUploadStorage(uploadDir: string, uploadStorage?: UploadStorage) {
+  return uploadStorage ?? createUploadStorageFromEnv(process.env, uploadDir);
 }
 
 async function listHeroOrDetail(store: ContentStore, section: MediaSection) {
@@ -150,6 +146,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   const store = options.store ?? (process.env.DATABASE_URL ? await import('./prismaStore').then((mod) => mod.createPrismaStore()) : createMemoryStore());
   const adminPassword = options.adminPassword ?? process.env.ADMIN_PASSWORD ?? 'admin123456';
   const uploadDir = options.uploadDir ?? path.resolve(process.cwd(), 'storage', 'img');
+  const uploadStorage = createSafeUploadStorage(uploadDir, options.uploadStorage);
   const sessions = new Map<string, true>();
   const app = express();
 
@@ -361,8 +358,11 @@ export async function createApp(options: CreateAppOptions = {}) {
         res.status(400).json({ message: 'file required' });
         return;
       }
-      const source = await storeUpload(uploadDir, req.file);
-      res.status(201).json({ source, resolvedUrl: source });
+      try {
+        res.status(201).json(await uploadStorage.save(req.file));
+      } catch {
+        res.status(502).json({ message: '图片存储失败，请检查存储桶配置或稍后重试' });
+      }
     });
   });
 
