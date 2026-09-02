@@ -13,7 +13,6 @@ import {
   Input,
   Layout,
   Menu,
-  Modal,
   Row,
   Select,
   Space,
@@ -560,8 +559,11 @@ function AdminApp() {
   const [reviewStatusFilter, setReviewStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
   const [reviewQuery, setReviewQuery] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [selectedReviewIds, setSelectedReviewIds] = useState<number[]>([]);
+  const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
+  const [selectedPurchaseIds, setSelectedPurchaseIds] = useState<number[]>([]);
   const { Title, Text } = Typography;
-  const { message } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
   const { Header, Sider, Content } = Layout;
 
   const refresh = async () => {
@@ -721,26 +723,75 @@ function AdminApp() {
       message.error('浮层文案保存失败');
     }
   };
+  const clearBatchSelections = () => {
+    setSelectedReviewIds([]);
+    setSelectedMediaIds([]);
+    setSelectedPurchaseIds([]);
+  };
+
+  const handleDelete = async (title: string, action: () => Promise<void>) => {
+    try {
+      await action();
+      await refresh();
+      message.success(`${title}已删除`);
+    } catch {
+      message.error(`${title}删除失败`);
+    }
+  };
+
   const confirmDelete = (title: string, action: () => Promise<void>) => {
     console.log(`[admin delete] ${title} clicked`);
-    Modal.confirm({
+    modal.confirm({
       title: `确定删除${title}吗？`,
       content: '删除后无法恢复，请确认当前操作。',
       okText: '确认删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
       onOk: async () => {
-        try {
-          console.log(`[admin delete] ${title} confirmed`);
-          await action();
-          await refresh();
-          message.success(`${title}已删除`);
-        } catch {
-          message.error(`${title}删除失败`);
-        }
+        console.log(`[admin delete] ${title} confirmed`);
+        await handleDelete(title, action);
       },
     });
   };
+
+  const confirmBulkAction = (title: string, content: string, action: () => Promise<void>, successText: string) => {
+    modal.confirm({
+      title,
+      content,
+      okText: '确认执行',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await action();
+        await refresh();
+        clearBatchSelections();
+        message.success(successText);
+      },
+    });
+  };
+
+  const renderDeleteButton = (title: string, action: () => Promise<void>, disabled = false) => (
+    <Button type="link" danger onClick={() => confirmDelete(title, action)} disabled={disabled}>
+      删除
+    </Button>
+  );
+
+  const renderBatchToolbar = (label: string, count: number, onDelete: () => void, onEnable: () => void, onDisable: () => void) => (
+    <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+      <Text type="secondary">{count ? `已选择 ${count} 项` : `勾选${label}后可批量操作`}</Text>
+      <Space>
+        <Button danger disabled={!count} onClick={onDelete}>
+          批量删除
+        </Button>
+        <Button disabled={!count} onClick={onEnable}>
+          批量启用
+        </Button>
+        <Button disabled={!count} onClick={onDisable}>
+          批量禁用
+        </Button>
+      </Space>
+    </Space>
+  );
 
   const isDesktop = useIsDesktop();
   const mediaAssets = (bootstrap?.heroImages ?? []).concat(bootstrap?.detailImages ?? []);
@@ -771,7 +822,173 @@ function AdminApp() {
   const reviewColumns: ColumnsType<Review> = [{ title: '用户', dataIndex: 'name', key: 'name', render: (name: string) => <Space><Tag color="blue">{name.slice(0, 1)}</Tag>{name}</Space> }, { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true }, { title: '图片', dataIndex: 'images', key: 'images', render: (images: string[]) => images[0] ? <img className="admin-table-thumb" src={images[0]} alt="评价图片" /> : <Text type="secondary">无图片</Text> }, { title: '首页展示', dataIndex: 'featuredOnHome', render: (value: boolean, item: Review) => <Switch size="small" checked={value} onChange={async (featuredOnHome) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '排序', dataIndex: 'homeOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean, item: Review) => <Switch size="small" checked={enabled} onChange={async (nextEnabled) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: nextEnabled }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '操作', key: 'action', render: (_: unknown, item: Review) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => openReview(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('评价', async () => { await deleteReview(item.id); })}>删除</Button></Space> }];
   const mediaColumns: ColumnsType<MediaAsset> = [{ title: '预览', dataIndex: 'resolvedUrl', render: (url: string, item: MediaAsset) => url ? <img className="admin-table-thumb" src={url} alt={item.alt} /> : <Text type="secondary">无图片</Text> }, { title: '区域', dataIndex: 'section', render: (section: string) => section === 'hero' ? '首页轮播' : '详情图片' }, { title: '地址', dataIndex: 'resolvedUrl', ellipsis: true }, { title: '排序', dataIndex: 'sortOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'success' : 'default'}>{enabled ? '启用' : '禁用'}</Tag> }, { title: '操作', key: 'action', render: (_: unknown, item: MediaAsset) => <Space><Button type="link" onClick={() => openMedia(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('图片', async () => { await deleteMediaAsset(item.id); })}>删除</Button></Space> }];
   const purchaseColumns: ColumnsType<FloatingPurchase> = [{ title: '文案', dataIndex: 'content' }, { title: '排序', dataIndex: 'sortOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'success' : 'default'}>{enabled ? '启用' : '禁用'}</Tag> }, { title: '操作', key: 'action', render: (_: unknown, item: FloatingPurchase) => <Space><Button type="link" onClick={() => openPurchase(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('浮层文案', async () => { await deleteFloatingPurchase(item.id); })}>删除</Button></Space> }];
-  const content = activePage === 'dashboard' ? <><Title level={2}>欢迎回来</Title><Text type="secondary">当前站点：{bootstrap?.site.name}</Text><Row gutter={[20, 20]} className="admin-stat-row"><Col xs={24} lg={8}><Card><Statistic title="图片总数" value={mediaAssets.length} prefix={<FileImageOutlined />} /></Card></Col><Col xs={24} lg={8}><Card><Statistic title="评价总数" value={bootstrap?.allReviews.length ?? 0} prefix={<FormOutlined />} /></Card></Col><Col xs={24} lg={8}><Card><Statistic title="活跃浮层" value={(bootstrap?.floatingPurchases ?? []).filter((item) => item.enabled).length} prefix={<TagsOutlined />} /></Card></Col></Row><Row gutter={[20, 20]} className="admin-quick-row"><Col xs={24} lg={12}><Card hoverable onClick={openSettings}><Descriptions column={1} title="站点配置"><Descriptions.Item label="店铺">{settings?.shopName}</Descriptions.Item><Descriptions.Item label="当前售价">¥{settings?.salePrice}</Descriptions.Item></Descriptions></Card></Col><Col xs={24} lg={12}><Card hoverable onClick={() => setActivePage('settings')}><Descriptions column={1} title="站点管理"><Descriptions.Item label="站点数量">{bootstrap?.sites.length ?? 0} 个</Descriptions.Item><Descriptions.Item label="当前标识">{bootstrap?.site.slug}</Descriptions.Item></Descriptions></Card></Col></Row></> : activePage === 'settings' ? <><div className="admin-page-heading"><div><Title level={2}>站点管理中心</Title><Text type="secondary">创建站点、复制模板、切换当前站点，并维护当前站点配置。</Text></div><Space><Button onClick={openSettings}>编辑当前配置</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openSite()}>新建站点</Button></Space></div><Card className="admin-content-card" title="当前站点配置"><Descriptions column={{ xs: 1, sm: 2 }}><Descriptions.Item label="站点名称">{bootstrap?.site.name}</Descriptions.Item><Descriptions.Item label="站点标识">{bootstrap?.site.slug}</Descriptions.Item><Descriptions.Item label="店铺名">{settings?.shopName}</Descriptions.Item><Descriptions.Item label="售价">¥{settings?.salePrice}</Descriptions.Item><Descriptions.Item label="原价">¥{settings?.originalPrice}</Descriptions.Item><Descriptions.Item label="发货时间">{settings?.shippingTime}</Descriptions.Item></Descriptions></Card><Card className="admin-content-card"><Table rowKey="id" columns={siteColumns} dataSource={bootstrap?.sites ?? []} loading={loading} pagination={false} /></Card></> : activePage === 'media' ? <><div className="admin-page-heading"><div><Title level={2}>图片管理</Title><Text type="secondary">首页轮播和详情图片按区域独立管理。</Text></div><Space><Button icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'detail')}>添加详情图</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'hero')}>添加轮播图</Button></Space></div><Card className="admin-content-card"><Table rowKey="id" columns={mediaColumns} dataSource={mediaAssets} loading={loading} pagination={{ pageSize: 8, showSizeChanger: true }} /></Card></> : activePage === 'reviews' ? <><div className="admin-page-heading"><div><Title level={2}>评价管理</Title><Text type="secondary">管理当前站点的评价信息。</Text></div><Button type="primary" icon={<PlusOutlined />} onClick={() => openReview()}>添加评价</Button></div><Card className="admin-filter-card"><Space wrap><Select value={reviewStatusFilter} onChange={setReviewStatusFilter} options={[{ value: 'all', label: '全部状态' }, { value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }]} /><Input.Search value={reviewQuery} onChange={(event) => setReviewQuery(event.target.value)} placeholder="输入用户名或评价内容" allowClear /></Space></Card><Card className="admin-content-card"><Table rowKey="id" columns={reviewColumns} dataSource={reviews} loading={loading} pagination={{ pageSize: 8, showSizeChanger: true }} locale={{ emptyText: <Empty description="暂无评价" /> }} /></Card></> : <><div className="admin-page-heading"><div><Title level={2}>浮层文案管理</Title><Text type="secondary">管理当前站点的浮层购买提示与滚动文案。</Text></div><Button type="primary" icon={<PlusOutlined />} onClick={() => openPurchase()}>添加文案</Button></div><Card className="admin-content-card"><Table rowKey="id" columns={purchaseColumns} dataSource={bootstrap?.floatingPurchases ?? []} loading={loading} pagination={{ pageSize: 8 }} /></Card></>;
+  const selectedReviewItems = reviews.filter((item) => selectedReviewIds.includes(item.id));
+  const selectedMediaItems = mediaAssets.filter((item) => selectedMediaIds.includes(item.id));
+  const selectedPurchaseItems = (bootstrap?.floatingPurchases ?? []).filter((item) => selectedPurchaseIds.includes(item.id));
+
+  const reviewUpdatePayload = (item: Review, enabled: boolean) => ({
+    name: item.name,
+    content: item.content,
+    images: item.images,
+    featuredOnHome: item.featuredOnHome,
+    homeOrder: item.homeOrder,
+    enabled,
+  });
+
+  const mediaUpdatePayload = (item: MediaAsset, enabled: boolean) => ({
+    section: item.section,
+    sourceType: item.sourceType,
+    source: item.source,
+    alt: item.alt,
+    sortOrder: item.sortOrder,
+    enabled,
+  });
+
+  const purchaseUpdatePayload = (item: FloatingPurchase, enabled: boolean) => ({
+    content: item.content,
+    enabled,
+    sortOrder: item.sortOrder,
+  });
+
+  const handleBatchReviewDelete = () => confirmBulkAction('批量删除评价', `已选择 ${selectedReviewIds.length} 项，确认删除吗？`, async () => { await Promise.all(selectedReviewItems.map((item) => deleteReview(item.id))); }, '评价已删除');
+  const handleBatchReviewEnable = () => confirmBulkAction('批量启用评价', `已选择 ${selectedReviewIds.length} 项，确认启用吗？`, async () => { await Promise.all(selectedReviewItems.map((item) => updateReview(item.id, reviewUpdatePayload(item, true)))); }, '评价已启用');
+  const handleBatchReviewDisable = () => confirmBulkAction('批量禁用评价', `已选择 ${selectedReviewIds.length} 项，确认禁用吗？`, async () => { await Promise.all(selectedReviewItems.map((item) => updateReview(item.id, reviewUpdatePayload(item, false)))); }, '评价已禁用');
+
+  const handleBatchMediaDelete = () => confirmBulkAction('批量删除图片', `已选择 ${selectedMediaIds.length} 项，确认删除吗？`, async () => { await Promise.all(selectedMediaItems.map((item) => deleteMediaAsset(item.id))); }, '图片已删除');
+  const handleBatchMediaEnable = () => confirmBulkAction('批量启用图片', `已选择 ${selectedMediaIds.length} 项，确认启用吗？`, async () => { await Promise.all(selectedMediaItems.map((item) => updateMediaAsset(item.id, mediaUpdatePayload(item, true)))); }, '图片已启用');
+  const handleBatchMediaDisable = () => confirmBulkAction('批量禁用图片', `已选择 ${selectedMediaIds.length} 项，确认禁用吗？`, async () => { await Promise.all(selectedMediaItems.map((item) => updateMediaAsset(item.id, mediaUpdatePayload(item, false)))); }, '图片已禁用');
+
+  const handleBatchPurchaseDelete = () => confirmBulkAction('批量删除文案', `已选择 ${selectedPurchaseIds.length} 项，确认删除吗？`, async () => { await Promise.all(selectedPurchaseItems.map((item) => deleteFloatingPurchase(item.id))); }, '浮层文案已删除');
+  const handleBatchPurchaseEnable = () => confirmBulkAction('批量启用文案', `已选择 ${selectedPurchaseIds.length} 项，确认启用吗？`, async () => { await Promise.all(selectedPurchaseItems.map((item) => updateFloatingPurchase(item.id, purchaseUpdatePayload(item, true)))); }, '浮层文案已启用');
+  const handleBatchPurchaseDisable = () => confirmBulkAction('批量禁用文案', `已选择 ${selectedPurchaseIds.length} 项，确认禁用吗？`, async () => { await Promise.all(selectedPurchaseItems.map((item) => updateFloatingPurchase(item.id, purchaseUpdatePayload(item, false)))); }, '浮层文案已禁用');
+  const reviewTable = <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedReviewIds, onChange: (keys) => setSelectedReviewIds(keys as number[]) }} title={() => renderBatchToolbar('评价', selectedReviewIds.length, handleBatchReviewDelete, handleBatchReviewEnable, handleBatchReviewDisable)} columns={reviewColumns} dataSource={reviews} loading={loading} pagination={{ pageSize: 8, showSizeChanger: true }} locale={{ emptyText: <Empty description="暂无评价" /> }} />;
+  const mediaTable = <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedMediaIds, onChange: (keys) => setSelectedMediaIds(keys as number[]) }} title={() => renderBatchToolbar('图片', selectedMediaIds.length, handleBatchMediaDelete, handleBatchMediaEnable, handleBatchMediaDisable)} columns={mediaColumns} dataSource={mediaAssets} loading={loading} pagination={{ pageSize: 8, showSizeChanger: true }} />;
+  const purchaseTable = <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedPurchaseIds, onChange: (keys) => setSelectedPurchaseIds(keys as number[]) }} title={() => renderBatchToolbar('文案', selectedPurchaseIds.length, handleBatchPurchaseDelete, handleBatchPurchaseEnable, handleBatchPurchaseDisable)} columns={purchaseColumns} dataSource={bootstrap?.floatingPurchases ?? []} loading={loading} pagination={{ pageSize: 8 }} />;
+  const content = activePage === 'dashboard' ? (
+    <>
+      <Title level={2}>欢迎回来</Title>
+      <Text type="secondary">当前站点：{bootstrap?.site.name}</Text>
+      <Row gutter={[20, 20]} className="admin-stat-row">
+        <Col xs={24} lg={8}>
+          <Card>
+            <Statistic title="图片总数" value={mediaAssets.length} prefix={<FileImageOutlined />} />
+          </Card>
+        </Col>
+        <Col xs={24} lg={8}>
+          <Card>
+            <Statistic title="评价总数" value={bootstrap?.allReviews.length ?? 0} prefix={<FormOutlined />} />
+          </Card>
+        </Col>
+        <Col xs={24} lg={8}>
+          <Card>
+            <Statistic title="活跃浮层" value={(bootstrap?.floatingPurchases ?? []).filter((item) => item.enabled).length} prefix={<TagsOutlined />} />
+          </Card>
+        </Col>
+      </Row>
+      <Row gutter={[20, 20]} className="admin-quick-row">
+        <Col xs={24} lg={12}>
+          <Card hoverable onClick={openSettings}>
+            <Descriptions column={1} title="站点配置">
+              <Descriptions.Item label="店铺">{settings?.shopName}</Descriptions.Item>
+              <Descriptions.Item label="当前售价">¥{settings?.salePrice}</Descriptions.Item>
+            </Descriptions>
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card hoverable onClick={() => setActivePage('settings')}>
+            <Descriptions column={1} title="站点管理">
+              <Descriptions.Item label="站点数量">{bootstrap?.sites.length ?? 0} 个</Descriptions.Item>
+              <Descriptions.Item label="当前标识">{bootstrap?.site.slug}</Descriptions.Item>
+            </Descriptions>
+          </Card>
+        </Col>
+      </Row>
+    </>
+  ) : activePage === 'settings' ? (
+    <>
+      <div className="admin-page-heading">
+        <div>
+          <Title level={2}>站点管理中心</Title>
+          <Text type="secondary">创建站点、复制模板、切换当前站点，并维护当前站点配置。</Text>
+        </div>
+        <Space>
+          <Button onClick={openSettings}>编辑当前配置</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openSite()}>
+            新建站点
+          </Button>
+        </Space>
+      </div>
+      <Card className="admin-content-card" title="当前站点配置">
+        <Descriptions column={{ xs: 1, sm: 2 }}>
+          <Descriptions.Item label="站点名称">{bootstrap?.site.name}</Descriptions.Item>
+          <Descriptions.Item label="站点标识">{bootstrap?.site.slug}</Descriptions.Item>
+          <Descriptions.Item label="店铺名">{settings?.shopName}</Descriptions.Item>
+          <Descriptions.Item label="售价">¥{settings?.salePrice}</Descriptions.Item>
+          <Descriptions.Item label="原价">¥{settings?.originalPrice}</Descriptions.Item>
+          <Descriptions.Item label="发货时间">{settings?.shippingTime}</Descriptions.Item>
+        </Descriptions>
+      </Card>
+      <Card className="admin-content-card">
+        <Table rowKey="id" columns={siteColumns} dataSource={bootstrap?.sites ?? []} loading={loading} pagination={false} />
+      </Card>
+    </>
+  ) : activePage === 'media' ? (
+    <>
+      <div className="admin-page-heading">
+        <div>
+          <Title level={2}>图片管理</Title>
+          <Text type="secondary">首页轮播和详情图片按区域独立管理。</Text>
+        </div>
+        <Space>
+          <Button icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'detail')}>
+            添加详情图
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'hero')}>
+            添加轮播图
+          </Button>
+        </Space>
+      </div>
+      <Card className="admin-content-card">
+        {mediaTable}
+      </Card>
+    </>
+  ) : activePage === 'reviews' ? (
+    <>
+      <div className="admin-page-heading">
+        <div>
+          <Title level={2}>评价管理</Title>
+          <Text type="secondary">管理当前站点的评价信息。</Text>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => openReview()}>
+          添加评价
+        </Button>
+      </div>
+      <Card className="admin-filter-card">
+        <Space wrap>
+          <Select value={reviewStatusFilter} onChange={setReviewStatusFilter} options={[{ value: 'all', label: '全部状态' }, { value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }]} />
+          <Input.Search value={reviewQuery} onChange={(event) => setReviewQuery(event.target.value)} placeholder="输入用户名或评价内容" allowClear />
+        </Space>
+      </Card>
+      <Card className="admin-content-card">
+        {reviewTable}
+      </Card>
+    </>
+  ) : (
+    <>
+      <div className="admin-page-heading">
+        <div>
+          <Title level={2}>浮层文案管理</Title>
+          <Text type="secondary">管理当前站点的浮层购买提示与滚动文案。</Text>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => openPurchase()}>
+          添加文案
+        </Button>
+      </div>
+      <Card className="admin-content-card">
+        {purchaseTable}
+      </Card>
+    </>
+  );
   return <Layout className="antd-admin-layout"><Sider theme="light" width={260} breakpoint="lg" collapsedWidth={80}><div className="antd-admin-brand"><div className="antd-admin-logo"><TagsOutlined /></div><div><strong>管理系统</strong><span>多站点后台</span></div></div><Menu mode="inline" selectedKeys={[activePage]} items={navItems} onClick={({ key }) => setActivePage(key)} /><div className="antd-admin-account"><Tag color="blue">A</Tag><div><strong>管理员</strong><span>{bootstrap?.site.name ?? 'System Admin'}</span></div></div></Sider><Layout><Header className="antd-admin-header"><Space><Title level={4}>管理中心</Title>{bootstrap ? <Select className="admin-site-switch" value={bootstrap.activeSiteId} onChange={(id) => { const site = bootstrap.sites.find((item) => item.id === id); if (site) void handleActivateSite(site); }} options={bootstrap.sites.map((site) => ({ value: site.id, label: site.name }))} /> : null}</Space><Space><Button type="text" icon={<BellOutlined />} aria-label="通知" /><Button type="text" icon={<QuestionCircleOutlined />} aria-label="帮助" /><Button type="link" icon={<LogoutOutlined />} onClick={handleLogout}>退出登录</Button></Space></Header><Content className="antd-admin-content">{loading && !bootstrap ? <Spin size="large" /> : content}</Content></Layout><Drawer title={drawer === 'settings' ? '编辑站点配置' : drawer === 'site' ? (siteDraft.id ? '编辑站点' : '新建站点') : drawer === 'media' ? '编辑图片资源' : drawer === 'review' ? '编辑评价' : '编辑浮层文案'} open={Boolean(drawer)} onClose={closeDrawer} width={drawer === 'settings' ? 720 : 560} destroyOnClose>{drawer === 'settings' ? settingsForm : drawer === 'site' ? siteForm : drawer === 'media' ? mediaForm : drawer === 'review' ? reviewForm : purchaseForm}</Drawer></Layout>;
 }
 

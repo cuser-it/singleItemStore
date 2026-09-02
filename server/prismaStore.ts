@@ -493,8 +493,16 @@ export async function createPrismaStore(): Promise<ContentStore> {
     },
     async getAdminBootstrap() {
       const bootstrap = await this.getBootstrap();
+      const siteId = bootstrap.site.id;
+      const [mediaAssets, floatingPurchases] = await Promise.all([
+        this.listMediaAssets(undefined, siteId),
+        this.listFloatingPurchases(siteId),
+      ]);
       return {
-        ...(bootstrap),
+        ...bootstrap,
+        heroImages: mediaAssets.filter((item) => item.section === 'hero'),
+        detailImages: mediaAssets.filter((item) => item.section === 'detail'),
+        floatingPurchases,
         authenticated: true,
         sites: await this.listSites(),
         activeSiteId: bootstrap.site.id,

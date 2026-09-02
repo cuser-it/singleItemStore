@@ -138,7 +138,7 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: /评价管理/ }));
     expect(await screen.findByRole('heading', { name: '评价管理' })).toBeInTheDocument();
-    await user.type(screen.getByPlaceholderText('输入用户名...'), defaultBootstrap.allReviews[0].name);
+    await user.type(screen.getByPlaceholderText('输入用户名或评价内容'), defaultBootstrap.allReviews[0].name);
     expect(screen.getByText(defaultBootstrap.allReviews[0].content)).toBeInTheDocument();
 
     await user.click(screen.getByRole('menuitem', { name: /站点管理/ }));

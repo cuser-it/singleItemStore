@@ -242,8 +242,13 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
     },
     async getAdminBootstrap() {
       const bootstrap = await this.getBootstrap();
+      const siteId = bootstrap.site.id;
+      const mediaAssets = await this.listMediaAssets(undefined, siteId);
       return {
         ...bootstrap,
+        heroImages: mediaAssets.filter((item) => item.section === 'hero'),
+        detailImages: mediaAssets.filter((item) => item.section === 'detail'),
+        floatingPurchases: await this.listFloatingPurchases(siteId),
         authenticated: true,
         sites: await this.listSites(),
         activeSiteId: bootstrap.site.id,
