@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import {
   Alert,
   App as AntApp,
@@ -237,7 +237,7 @@ function PublicApp() {
 
   const settings = bootstrap.settings;
   const firstVariant = settings.productVariants[0];
-  const selectedSku = useMemo(() => {
+  const selectedSku = (() => {
     if (!firstVariant) {
       return {
         id: 'single',
@@ -258,7 +258,7 @@ function PublicApp() {
     }
 
     return settings.productVariants.find((item) => item.id === selectedSkuId) ?? firstVariant;
-  }, [firstVariant, selectedSkuId, settings.productVariants, settings.salePrice, settings.originalPrice, settings.subtitle, settings.shopName, settings.title]);
+  })();
 
   const total = selectedSku.price * quantity;
   const reviewTags = settings.reviewTags;
