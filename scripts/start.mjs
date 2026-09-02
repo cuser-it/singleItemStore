@@ -18,6 +18,22 @@ async function findFreePort(startPort) {
   throw new Error(`no free port found near ${startPort}`);
 }
 
+async function waitForPort(port, host = '127.0.0.1') {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const ready = await new Promise((resolve) => {
+      const socket = net.createConnection({ port, host });
+      socket.once('connect', () => {
+        socket.end();
+        resolve(true);
+      });
+      socket.once('error', () => resolve(false));
+    });
+    if (ready) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`backend did not become ready on ${host}:${port}`);
+}
+
 function binPath(name) {
   return path.resolve('node_modules/.bin', process.platform === 'win32' ? `${name}.cmd` : name);
 }
@@ -32,6 +48,8 @@ const backend = spawn(binPath('tsx'), ['server/index.ts'], {
     PORT: String(backendPort),
   },
 });
+
+await waitForPort(backendPort);
 
 const frontend = spawn(binPath('vite'), ['--host', '0.0.0.0', '--port', String(frontendPort)], {
   stdio: 'inherit',
