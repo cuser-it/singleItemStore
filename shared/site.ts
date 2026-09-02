@@ -1,8 +1,18 @@
 export type MediaSection = 'hero' | 'detail';
 export type MediaSourceType = 'upload' | 'url';
 
+export type Site = {
+  id: number;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type SiteSettings = {
   id: number;
+  siteId: number;
   shopName: string;
   title: string;
   subtitle: string;
@@ -36,6 +46,7 @@ export type ProductVariant = {
 
 export type MediaAsset = {
   id: number;
+  siteId: number;
   section: MediaSection;
   sourceType: MediaSourceType;
   source: string;
@@ -49,6 +60,7 @@ export type MediaAsset = {
 
 export type Review = {
   id: number;
+  siteId: number;
   name: string;
   content: string;
   images: string[];
@@ -61,6 +73,7 @@ export type Review = {
 
 export type FloatingPurchase = {
   id: number;
+  siteId: number;
   content: string;
   enabled: boolean;
   sortOrder: number;
@@ -69,6 +82,7 @@ export type FloatingPurchase = {
 };
 
 export type PublicBootstrap = {
+  site: Site;
   settings: SiteSettings;
   heroImages: MediaAsset[];
   detailImages: MediaAsset[];
@@ -79,9 +93,22 @@ export type PublicBootstrap = {
 
 export type AdminBootstrap = PublicBootstrap & {
   authenticated: true;
+  sites: Site[];
+  activeSiteId: number;
 };
 
-export type SiteSettingsUpdateInput = Omit<SiteSettings, 'id' | 'createdAt' | 'updatedAt'>;
+export type SiteInput = {
+  name: string;
+  slug: string;
+  templateSiteId?: number;
+};
+
+export type SiteUpdateInput = {
+  name: string;
+  slug: string;
+};
+
+export type SiteSettingsUpdateInput = Omit<SiteSettings, 'id' | 'siteId' | 'createdAt' | 'updatedAt'>;
 
 export type MediaAssetInput = {
   section: MediaSection;
@@ -109,6 +136,15 @@ export type FloatingPurchaseInput = {
 
 const now = new Date().toISOString();
 
+const defaultSite: Site = {
+  id: 1,
+  name: '默认站点',
+  slug: 'default',
+  isActive: true,
+  createdAt: now,
+  updatedAt: now,
+};
+
 const heroImages = [
   '/assets/hero-1.jpg',
   '/assets/hero-2.jpg',
@@ -117,6 +153,7 @@ const heroImages = [
   '/assets/hero-5.jpg',
 ].map((source, index) => ({
   id: index + 1,
+  siteId: defaultSite.id,
   section: 'hero' as const,
   sourceType: 'upload' as const,
   source,
@@ -140,6 +177,7 @@ const detailSources = [
 
 const detailImages = detailSources.map((source, index) => ({
   id: index + 101,
+  siteId: defaultSite.id,
   section: 'detail' as const,
   sourceType: 'upload' as const,
   source,
@@ -156,6 +194,7 @@ const reviewImages = ['/assets/review-tags.png'];
 const reviews = [
   {
     id: 1,
+    siteId: defaultSite.id,
     name: '悹**7',
     content: '这次在网上看到就买来试试，效果是真心好啊。产品用着挺稳，物流也快，包装很完整。',
     images: reviewImages,
@@ -167,6 +206,7 @@ const reviews = [
   },
   {
     id: 2,
+    siteId: defaultSite.id,
     name: '张**9',
     content: '客服回复很及时，查询订单也方便。套餐价格比单买更划算，准备继续复购。',
     images: reviewImages,
@@ -184,6 +224,7 @@ const floatingPurchases = [
   '张**2分钟前已购买',
 ].map((content, index) => ({
   id: index + 1,
+  siteId: defaultSite.id,
   content,
   enabled: true,
   sortOrder: index + 1,
@@ -193,6 +234,7 @@ const floatingPurchases = [
 
 export const defaultSiteSettings: SiteSettings = {
   id: 1,
+  siteId: defaultSite.id,
   shopName: '单品商城 · 正品官方',
   title: '参茸 养心益肾胶囊 正品官方 勃起苦困难 阳痿早泄 OTC 国药准字',
   subtitle: '本品售出，非质量问题不退不换',
@@ -219,6 +261,7 @@ export const defaultSiteSettings: SiteSettings = {
 };
 
 export const defaultBootstrap: PublicBootstrap = {
+  site: defaultSite,
   settings: defaultSiteSettings,
   heroImages,
   detailImages,

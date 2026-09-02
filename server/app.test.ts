@@ -151,4 +151,78 @@ describe('backend', () => {
     const tail = detailImages.slice(-2).map((item) => item.sortOrder);
     expect(tail).toEqual([99, 100]);
   });
+  it('copies a site template and keeps site content isolated after switching', async () => {
+    await login();
+
+    const createResponse = await fetch(`${baseUrl}/api/admin/sites`, {
+      method: 'POST',
+      headers: { cookie: authCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '第二站点', slug: 'second-site', templateSiteId: 1 }),
+    });
+    expect(createResponse.status).toBe(201);
+    const createdSite = (await createResponse.json()) as { id: number; name: string; isActive: boolean };
+    expect(createdSite.isActive).toBe(false);
+
+    const switchResponse = await fetch(`${baseUrl}/api/admin/sites/${createdSite.id}/activate`, {
+      method: 'POST',
+      headers: { cookie: authCookie },
+    });
+    expect(switchResponse.status).toBe(200);
+
+    const secondBootstrap = await fetch(`${baseUrl}/api/admin/bootstrap`, { headers: { cookie: authCookie } }).then((response) => response.json()) as {
+      activeSiteId: number;
+      sites: Array<{ id: number; isActive: boolean }>;
+      settings: { siteId: number; shopName: string };
+      detailImages: Array<{ id: number; siteId: number; source: string }>;
+    };
+    expect(secondBootstrap.activeSiteId).toBe(createdSite.id);
+    expect(secondBootstrap.settings.siteId).toBe(createdSite.id);
+    expect(secondBootstrap.detailImages.every((item) => item.siteId === createdSite.id)).toBe(true);
+
+    const firstDetailId = secondBootstrap.detailImages[0]?.id;
+    expect(firstDetailId).toBeTypeOf('number');
+    await fetch(`${baseUrl}/api/admin/media-assets/${firstDetailId}`, { method: 'DELETE', headers: { cookie: authCookie } });
+    await fetch(`${baseUrl}/api/admin/site-settings`, {
+      method: 'PUT',
+      headers: { cookie: authCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...defaultSettingsPayload(), shopName: '第二站点店铺' }),
+    });
+
+    const secondDetailImages = await fetch(`${baseUrl}/api/public/detail-images`).then((response) => response.json()) as Array<{ siteId: number; source: string }>;
+    expect(secondDetailImages.every((item) => item.siteId === createdSite.id)).toBe(true);
+    expect(secondDetailImages.length).toBe(secondBootstrap.detailImages.length - 1);
+
+    await fetch(`${baseUrl}/api/admin/sites/1/activate`, { method: 'POST', headers: { cookie: authCookie } });
+    const firstBootstrap = await fetch(`${baseUrl}/api/admin/bootstrap`, { headers: { cookie: authCookie } }).then((response) => response.json()) as {
+      activeSiteId: number;
+      settings: { siteId: number; shopName: string };
+      detailImages: Array<{ siteId: number }>;
+    };
+    expect(firstBootstrap.activeSiteId).toBe(1);
+    expect(firstBootstrap.settings.shopName).not.toBe('第二站点店铺');
+    expect(firstBootstrap.detailImages.every((item) => item.siteId === 1)).toBe(true);
+    expect(firstBootstrap.detailImages.length).toBeGreaterThan(secondDetailImages.length);
+  });
 });
+
+function defaultSettingsPayload() {
+  return {
+    shopName: '单品商城 · 正品官方',
+    title: '参茸 养心益肾胶囊 正品官方 勃起苦困难 阳痿早泄 OTC 国药准字',
+    subtitle: '本品售出，非质量问题不退不换',
+    highlight: '立赠1盒男士战斗礼包，中西结合更强更科学',
+    serviceNote: '免费包邮 · 18:00 前下单承诺当日发出',
+    guarantee: ['商城官方自营'],
+    productDescription: '立赠1盒男士战斗礼包，中西结合更强更科学',
+    shippingNote: '免费包邮',
+    reminder: '正品保证，不仅全，而且更安全',
+    shippingTime: '18:00 前下单，承诺当日发出',
+    salePrice: 99,
+    originalPrice: 299,
+    soldText: '50000+已售',
+    marqueeText: 'xxx购买',
+    reviewTags: ['效果明显'],
+    productVariants: [{ id: 'single', name: '单盒体验装', subtitle: '先试用再决定', price: 99, originalPrice: 299, saleLabel: '券后价' }],
+    heroImageCount: 5,
+  };
+}

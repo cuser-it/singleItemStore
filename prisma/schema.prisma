@@ -7,58 +7,85 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Site {
+  id                Int                @id @default(autoincrement())
+  name              String
+  slug              String             @unique
+  isActive          Boolean            @default(false)
+  settings          SiteSettings?
+  mediaAssets       MediaAsset[]
+  reviews           Review[]
+  floatingPurchases FloatingPurchase[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
 model SiteSettings {
-  id                Int      @id
-  shopName          String
-  title             String
-  subtitle          String
-  highlight         String
-  serviceNote       String
-  guarantee         Json
+  id                 Int      @id @default(autoincrement())
+  siteId             Int      @unique
+  site               Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  shopName           String
+  title              String
+  subtitle           String
+  highlight          String
+  serviceNote        String
+  guarantee          Json
   productDescription String
-  shippingNote      String
-  reminder          String
-  shippingTime      String
-  salePrice         Float
-  originalPrice     Float
-  soldText          String
-  marqueeText       String
-  reviewTags        Json
+  shippingNote       String
+  reminder           String
+  shippingTime       String
+  salePrice          Float
+  originalPrice      Float
+  soldText           String
+  marqueeText        String
+  reviewTags         Json
   productVariants    Json
-  heroImageCount    Int
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  heroImageCount     Int
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model MediaAsset {
   id         Int      @id @default(autoincrement())
+  siteId     Int
+  site       Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
   section    String
   sourceType String
-  source      String
-  alt         String
-  sortOrder   Int      @default(0)
-  enabled     Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  source     String
+  alt        String
+  sortOrder  Int      @default(0)
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([siteId, section])
 }
 
 model Review {
-  id              Int      @id @default(autoincrement())
-  name            String
-  content         String
-  images          Json
-  featuredOnHome  Boolean  @default(false)
-  homeOrder       Int      @default(0)
-  enabled         Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  siteId         Int
+  site           Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name           String
+  content        String
+  images         Json
+  featuredOnHome Boolean  @default(false)
+  homeOrder      Int      @default(0)
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([siteId])
 }
 
 model FloatingPurchase {
   id        Int      @id @default(autoincrement())
+  siteId    Int
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
   content   String
   enabled   Boolean  @default(true)
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([siteId])
 }

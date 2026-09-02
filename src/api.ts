@@ -1,4 +1,4 @@
-import type { FloatingPurchase, MediaAsset, PublicBootstrap, Review, SiteSettings, SiteSettingsUpdateInput } from '../shared/site';
+import type { AdminBootstrap, FloatingPurchase, MediaAsset, PublicBootstrap, Review, Site, SiteInput, SiteSettings, SiteSettingsUpdateInput, SiteUpdateInput } from '../shared/site';
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
@@ -26,7 +26,7 @@ export async function fetchPublicBootstrap() {
 }
 
 export async function fetchAdminBootstrap() {
-  return requestJson<PublicBootstrap & { authenticated: true }>('/api/admin/bootstrap');
+  return requestJson<AdminBootstrap>('/api/admin/bootstrap');
 }
 
 export async function fetchAdminMe() {
@@ -47,6 +47,24 @@ export async function loginAdmin(password: string) {
 
 export async function logoutAdmin() {
   return requestJson<{ ok: true }>('/api/admin/logout', { method: 'POST' });
+}
+
+export async function createSite(input: SiteInput) {
+  return requestJson<Site>('/api/admin/sites', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateSite(id: number, input: SiteUpdateInput) {
+  return requestJson<Site>(`/api/admin/sites/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function activateSite(id: number) {
+  return requestJson<Site>(`/api/admin/sites/${id}/activate`, { method: 'POST' });
 }
 
 export async function saveSiteSettings(input: SiteSettingsUpdateInput) {

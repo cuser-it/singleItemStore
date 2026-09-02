@@ -3,14 +3,23 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { defaultBootstrap } from '../shared/site';
 
+const adminBootstrap = {
+  ...defaultBootstrap,
+  authenticated: true as const,
+  sites: [defaultBootstrap.site, { ...defaultBootstrap.site, id: 2, name: '第二站点', slug: 'second-site', isActive: false }],
+  activeSiteId: defaultBootstrap.site.id,
+};
+
 vi.mock('./api', () => ({
+  activateSite: vi.fn(),
   createFloatingPurchase: vi.fn(),
   createMediaAsset: vi.fn(),
   createReview: vi.fn(),
+  createSite: vi.fn(),
   deleteFloatingPurchase: vi.fn(),
   deleteMediaAsset: vi.fn(),
   deleteReview: vi.fn(),
-  fetchAdminBootstrap: vi.fn().mockResolvedValue({ ...defaultBootstrap, authenticated: true }),
+  fetchAdminBootstrap: vi.fn().mockResolvedValue(adminBootstrap),
   fetchAdminMe: vi.fn().mockResolvedValue(false),
   fetchPublicBootstrap: vi.fn().mockResolvedValue(defaultBootstrap),
   loginAdmin: vi.fn(),
@@ -19,16 +28,20 @@ vi.mock('./api', () => ({
   updateFloatingPurchase: vi.fn(),
   updateMediaAsset: vi.fn(),
   updateReview: vi.fn(),
+  updateSite: vi.fn(),
   uploadAsset: vi.fn(),
-}));
+}))
 
-import { fetchAdminMe, fetchPublicBootstrap, saveSiteSettings } from './api';
+import { activateSite, createSite, fetchAdminBootstrap, fetchAdminMe, fetchPublicBootstrap, saveSiteSettings } from './api';
 import { App } from './App';
 
 beforeEach(() => {
   window.history.replaceState({}, '', '/');
   vi.mocked(fetchAdminMe).mockResolvedValue(false);
+  vi.mocked(fetchAdminBootstrap).mockResolvedValue(adminBootstrap);
   vi.mocked(fetchPublicBootstrap).mockResolvedValue(defaultBootstrap);
+  vi.mocked(createSite).mockResolvedValue({ ...defaultBootstrap.site, id: 3, name: '华东商城', slug: 'east-store', isActive: false });
+  vi.mocked(activateSite).mockResolvedValue({ ...defaultBootstrap.site, id: 2, name: '第二站点', slug: 'second-site', isActive: true });
   Object.defineProperty(window.navigator, 'userAgent', {
     configurable: true,
     value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
@@ -122,12 +135,35 @@ describe('App', () => {
     await user.type(screen.getByPlaceholderText('输入用户名...'), defaultBootstrap.allReviews[0].name);
     expect(screen.getByText(defaultBootstrap.allReviews[0].content)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('menuitem', { name: /站点配置/ }));
-    await user.click(screen.getByRole('button', { name: '打开编辑' }));
+    await user.click(screen.getByRole('menuitem', { name: /站点管理/ }));
+    await user.click(screen.getByRole('button', { name: '编辑当前配置' }));
     await user.click(screen.getByRole('button', { name: '保存配置' }));
 
     expect(saveSiteSettings).toHaveBeenCalledWith(expect.objectContaining({ shopName: defaultBootstrap.settings.shopName }));
   });
+  it('creates and switches sites from the admin site center', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchAdminMe).mockResolvedValue(true);
+    window.history.replaceState({}, '', '/admin');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '欢迎回来' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: /站点管理/ }));
+    expect(await screen.findByRole('heading', { name: '站点管理中心' })).toBeInTheDocument();
+    expect(screen.getByText('第二站点')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '新建站点' }));
+    await user.type(screen.getByPlaceholderText('例如 华东商城'), '华东商城');
+    await user.type(screen.getByPlaceholderText('例如 east-store'), 'east-store');
+    await user.click(screen.getByRole('button', { name: '创建站点' }));
+
+    expect(createSite).toHaveBeenCalledWith(expect.objectContaining({ name: '华东商城', slug: 'east-store', templateSiteId: defaultBootstrap.site.id }));
+
+    await user.click(screen.getAllByRole('button', { name: '切换' })[0]);
+    expect(activateSite).toHaveBeenCalledWith(2);
+  });
+
 
   it('blocks admin pages on mobile', async () => {
     Object.defineProperty(window.navigator, 'userAgent', {

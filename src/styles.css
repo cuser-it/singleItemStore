@@ -1493,6 +1493,7 @@ img {
 .antd-admin-account span { margin-top: 3px; color: #64748b; font-size: 12px; }
 .antd-admin-header { height: 76px; display: flex; align-items: center; justify-content: space-between; padding-inline: 30px; border-bottom: 1px solid #e3e8f0; background: #fbfbff; }
 .antd-admin-header .ant-typography { margin: 0; }
+.admin-site-switch { min-width: 180px; }
 .antd-admin-content { min-height: calc(100vh - 76px); padding: 32px; }
 .antd-admin-content > .ant-spin { display: block; margin: 100px auto; }
 .admin-stat-row { margin-top: 28px; }

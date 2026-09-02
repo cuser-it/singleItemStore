@@ -10,33 +10,42 @@ import {
   type PublicBootstrap,
   type Review,
   type ReviewInput,
+  type Site,
+  type SiteInput,
   type SiteSettings,
   type SiteSettingsUpdateInput,
+  type SiteUpdateInput,
   resolveMediaUrl,
   sortByOrder,
 } from '../shared/site';
 
 export type ContentStore = {
-  getBootstrap: () => Promise<PublicBootstrap>;
+  getActiveSite: () => Promise<Site>;
+  listSites: () => Promise<Site[]>;
+  createSite: (input: SiteInput) => Promise<Site>;
+  updateSite: (id: number, input: SiteUpdateInput) => Promise<Site | null>;
+  switchSite: (id: number) => Promise<Site | null>;
+  getBootstrap: (siteId?: number) => Promise<PublicBootstrap>;
   getAdminBootstrap: () => Promise<AdminBootstrap>;
-  getSiteSettings: () => Promise<SiteSettings>;
-  updateSiteSettings: (input: SiteSettingsUpdateInput) => Promise<SiteSettings>;
-  listMediaAssets: (section?: MediaSection) => Promise<MediaAsset[]>;
-  createMediaAsset: (input: MediaAssetInput) => Promise<MediaAsset>;
-  updateMediaAsset: (id: number, input: MediaAssetInput) => Promise<MediaAsset | null>;
-  deleteMediaAsset: (id: number) => Promise<boolean>;
-  listReviews: () => Promise<Review[]>;
-  createReview: (input: ReviewInput) => Promise<Review>;
-  updateReview: (id: number, input: ReviewInput) => Promise<Review | null>;
-  deleteReview: (id: number) => Promise<boolean>;
-  listFloatingPurchases: () => Promise<FloatingPurchase[]>;
-  createFloatingPurchase: (input: FloatingPurchaseInput) => Promise<FloatingPurchase>;
-  updateFloatingPurchase: (id: number, input: FloatingPurchaseInput) => Promise<FloatingPurchase | null>;
-  deleteFloatingPurchase: (id: number) => Promise<boolean>;
+  getSiteSettings: (siteId?: number) => Promise<SiteSettings>;
+  updateSiteSettings: (input: SiteSettingsUpdateInput, siteId?: number) => Promise<SiteSettings>;
+  listMediaAssets: (section?: MediaSection, siteId?: number) => Promise<MediaAsset[]>;
+  createMediaAsset: (input: MediaAssetInput, siteId?: number) => Promise<MediaAsset>;
+  updateMediaAsset: (id: number, input: MediaAssetInput, siteId?: number) => Promise<MediaAsset | null>;
+  deleteMediaAsset: (id: number, siteId?: number) => Promise<boolean>;
+  listReviews: (siteId?: number) => Promise<Review[]>;
+  createReview: (input: ReviewInput, siteId?: number) => Promise<Review>;
+  updateReview: (id: number, input: ReviewInput, siteId?: number) => Promise<Review | null>;
+  deleteReview: (id: number, siteId?: number) => Promise<boolean>;
+  listFloatingPurchases: (siteId?: number) => Promise<FloatingPurchase[]>;
+  createFloatingPurchase: (input: FloatingPurchaseInput, siteId?: number) => Promise<FloatingPurchase>;
+  updateFloatingPurchase: (id: number, input: FloatingPurchaseInput, siteId?: number) => Promise<FloatingPurchase | null>;
+  deleteFloatingPurchase: (id: number, siteId?: number) => Promise<boolean>;
 };
 
 type SeedState = {
-  settings: SiteSettings;
+  sites: Site[];
+  settings: SiteSettings[];
   mediaAssets: MediaAsset[];
   reviews: Review[];
   floatingPurchases: FloatingPurchase[];
@@ -48,7 +57,8 @@ function clone<T>(value: T): T {
 
 function buildSeedState(): SeedState {
   return {
-    settings: clone(defaultBootstrap.settings),
+    sites: [clone(defaultBootstrap.site)],
+    settings: [clone(defaultBootstrap.settings)],
     mediaAssets: [...defaultBootstrap.heroImages, ...defaultBootstrap.detailImages].map(clone),
     reviews: clone(defaultBootstrap.allReviews),
     floatingPurchases: clone(defaultBootstrap.floatingPurchases),
@@ -59,10 +69,26 @@ function makeId(items: { id: number }[]) {
   return items.reduce((max, item) => Math.max(max, item.id), 0) + 1;
 }
 
-function buildMediaAsset(input: MediaAssetInput, id: number): MediaAsset {
+function normalizeSlug(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || `site-${Date.now()}`;
+}
+
+function activeSiteId(state: SeedState) {
+  return state.sites.find((site) => site.isActive)?.id ?? state.sites[0]?.id ?? 1;
+}
+
+function siteOrActive(state: SeedState, siteId?: number) {
+  const id = siteId ?? activeSiteId(state);
+  const site = state.sites.find((item) => item.id === id);
+  if (!site) throw new Error('site not found');
+  return site;
+}
+
+function buildMediaAsset(input: MediaAssetInput, id: number, siteId: number): MediaAsset {
   const timestamp = new Date().toISOString();
   return {
     id,
+    siteId,
     section: input.section,
     sourceType: input.sourceType,
     source: input.source,
@@ -75,10 +101,11 @@ function buildMediaAsset(input: MediaAssetInput, id: number): MediaAsset {
   };
 }
 
-function buildReview(input: ReviewInput, id: number): Review {
+function buildReview(input: ReviewInput, id: number, siteId: number): Review {
   const timestamp = new Date().toISOString();
   return {
     id,
+    siteId,
     name: input.name,
     content: input.content,
     images: input.images,
@@ -90,10 +117,11 @@ function buildReview(input: ReviewInput, id: number): Review {
   };
 }
 
-function buildFloatingPurchase(input: FloatingPurchaseInput, id: number): FloatingPurchase {
+function buildFloatingPurchase(input: FloatingPurchaseInput, id: number, siteId: number): FloatingPurchase {
   const timestamp = new Date().toISOString();
   return {
     id,
+    siteId,
     content: input.content,
     enabled: input.enabled,
     sortOrder: input.sortOrder,
@@ -115,24 +143,80 @@ function topReviews(reviews: Review[]) {
   return [...enabled].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+function scoped<T extends { siteId: number }>(items: T[], siteId: number) {
+  return items.filter((item) => item.siteId === siteId);
+}
+
 export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
+  const base = buildSeedState();
   const state: SeedState = {
-    settings: clone(seed.settings ?? defaultBootstrap.settings),
-    mediaAssets: clone(seed.mediaAssets ?? buildSeedState().mediaAssets),
-    reviews: clone(seed.reviews ?? buildSeedState().reviews),
-    floatingPurchases: clone(seed.floatingPurchases ?? buildSeedState().floatingPurchases),
+    sites: clone(seed.sites ?? base.sites),
+    settings: clone(seed.settings ?? base.settings),
+    mediaAssets: clone(seed.mediaAssets ?? base.mediaAssets),
+    reviews: clone(seed.reviews ?? base.reviews),
+    floatingPurchases: clone(seed.floatingPurchases ?? base.floatingPurchases),
   };
 
   return {
-    async getBootstrap() {
-      const mediaAssets = sortByOrder(state.mediaAssets).filter((item) => item.enabled).map((item) => ({ ...item, resolvedUrl: resolveMediaUrl(item.source) }));
+    async getActiveSite() {
+      return clone(siteOrActive(state));
+    },
+    async listSites() {
+      return [...state.sites].sort((a, b) => a.id - b.id).map(clone);
+    },
+    async createSite(input) {
+      const id = makeId(state.sites);
+      const timestamp = new Date().toISOString();
+      const site: Site = {
+        id,
+        name: input.name.trim() || `站点 ${id}`,
+        slug: normalizeSlug(input.slug || input.name || `site-${id}`),
+        isActive: false,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      const templateId = input.templateSiteId && state.sites.some((item) => item.id === input.templateSiteId) ? input.templateSiteId : activeSiteId(state);
+      const templateSettings = state.settings.find((item) => item.siteId === templateId) ?? defaultSiteSettings;
+
+      state.sites.push(site);
+      state.settings.push({ ...clone(templateSettings), id: makeId(state.settings), siteId: id, createdAt: timestamp, updatedAt: timestamp });
+      scoped(state.mediaAssets, templateId).forEach((item) => state.mediaAssets.push({ ...clone(item), id: makeId(state.mediaAssets), siteId: id, createdAt: timestamp, updatedAt: timestamp }));
+      scoped(state.reviews, templateId).forEach((item) => state.reviews.push({ ...clone(item), id: makeId(state.reviews), siteId: id, createdAt: timestamp, updatedAt: timestamp }));
+      scoped(state.floatingPurchases, templateId).forEach((item) => state.floatingPurchases.push({ ...clone(item), id: makeId(state.floatingPurchases), siteId: id, createdAt: timestamp, updatedAt: timestamp }));
+
+      return clone(site);
+    },
+    async updateSite(id, input) {
+      const index = state.sites.findIndex((site) => site.id === id);
+      if (index < 0) return null;
+      state.sites[index] = {
+        ...state.sites[index],
+        name: input.name.trim() || state.sites[index].name,
+        slug: normalizeSlug(input.slug || state.sites[index].slug),
+        updatedAt: new Date().toISOString(),
+      };
+      return clone(state.sites[index]);
+    },
+    async switchSite(id) {
+      const site = state.sites.find((item) => item.id === id);
+      if (!site) return null;
+      state.sites = state.sites.map((item) => ({ ...item, isActive: item.id === id, updatedAt: item.id === id ? new Date().toISOString() : item.updatedAt }));
+      return clone(state.sites.find((item) => item.id === id)!);
+    },
+    async getBootstrap(siteId) {
+      const site = siteOrActive(state, siteId);
+      const settings = state.settings.find((item) => item.siteId === site.id);
+      if (!settings) throw new Error('site settings not found');
+      const mediaAssets = sortByOrder(scoped(state.mediaAssets, site.id)).filter((item) => item.enabled).map((item) => ({ ...item, resolvedUrl: resolveMediaUrl(item.source) }));
+      const reviews = scoped(state.reviews, site.id);
       return {
-        settings: clone(state.settings),
-        heroImages: mediaAssets.filter((item) => item.section === 'hero'),
+        site: clone(site),
+        settings: clone(settings),
+        heroImages: mediaAssets.filter((item) => item.section === 'hero').slice(0, 15),
         detailImages: mediaAssets.filter((item) => item.section === 'detail'),
-        reviews: topReviews(state.reviews).slice(0, 2),
-        allReviews: [...state.reviews].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-        floatingPurchases: sortByOrder(state.floatingPurchases).filter((item) => item.enabled),
+        reviews: topReviews(reviews).slice(0, 2),
+        allReviews: [...reviews].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        floatingPurchases: sortByOrder(scoped(state.floatingPurchases, site.id)).filter((item) => item.enabled),
       };
     },
     async getAdminBootstrap() {
@@ -140,31 +224,42 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       return {
         ...bootstrap,
         authenticated: true,
+        sites: await this.listSites(),
+        activeSiteId: bootstrap.site.id,
       };
     },
-    async getSiteSettings() {
-      return clone(state.settings);
+    async getSiteSettings(siteId) {
+      const site = siteOrActive(state, siteId);
+      const settings = state.settings.find((item) => item.siteId === site.id);
+      if (!settings) throw new Error('site settings not found');
+      return clone(settings);
     },
-    async updateSiteSettings(input) {
-      state.settings = {
-        ...state.settings,
+    async updateSiteSettings(input, siteId) {
+      const site = siteOrActive(state, siteId);
+      const index = state.settings.findIndex((item) => item.siteId === site.id);
+      if (index < 0) throw new Error('site settings not found');
+      state.settings[index] = {
+        ...state.settings[index],
         ...clone(input),
         updatedAt: new Date().toISOString(),
       };
-      return clone(state.settings);
+      return clone(state.settings[index]);
     },
-    async listMediaAssets(section) {
-      return sortByOrder(state.mediaAssets)
+    async listMediaAssets(section, siteId) {
+      const site = siteOrActive(state, siteId);
+      return sortByOrder(scoped(state.mediaAssets, site.id))
         .filter((item) => (section ? item.section === section : true))
         .map((item) => ({ ...item, resolvedUrl: resolveMediaUrl(item.source) }));
     },
-    async createMediaAsset(input) {
-      const item = buildMediaAsset(input, makeId(state.mediaAssets));
+    async createMediaAsset(input, siteId) {
+      const site = siteOrActive(state, siteId);
+      const item = buildMediaAsset(input, makeId(state.mediaAssets), site.id);
       state.mediaAssets.push(item);
       return clone(item);
     },
-    async updateMediaAsset(id, input) {
-      const index = state.mediaAssets.findIndex((item) => item.id === id);
+    async updateMediaAsset(id, input, siteId) {
+      const site = siteOrActive(state, siteId);
+      const index = state.mediaAssets.findIndex((item) => item.id === id && item.siteId === site.id);
       if (index < 0) return null;
       const updated = {
         ...state.mediaAssets[index],
@@ -175,21 +270,25 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       state.mediaAssets[index] = updated;
       return clone(updated);
     },
-    async deleteMediaAsset(id) {
+    async deleteMediaAsset(id, siteId) {
+      const site = siteOrActive(state, siteId);
       const before = state.mediaAssets.length;
-      state.mediaAssets = state.mediaAssets.filter((item) => item.id !== id);
+      state.mediaAssets = state.mediaAssets.filter((item) => item.id !== id || item.siteId !== site.id);
       return state.mediaAssets.length !== before;
     },
-    async listReviews() {
-      return [...state.reviews].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    async listReviews(siteId) {
+      const site = siteOrActive(state, siteId);
+      return scoped(state.reviews, site.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
-    async createReview(input) {
-      const item = buildReview(input, makeId(state.reviews));
+    async createReview(input, siteId) {
+      const site = siteOrActive(state, siteId);
+      const item = buildReview(input, makeId(state.reviews), site.id);
       state.reviews.push(item);
       return clone(item);
     },
-    async updateReview(id, input) {
-      const index = state.reviews.findIndex((item) => item.id === id);
+    async updateReview(id, input, siteId) {
+      const site = siteOrActive(state, siteId);
+      const index = state.reviews.findIndex((item) => item.id === id && item.siteId === site.id);
       if (index < 0) return null;
       const updated = {
         ...state.reviews[index],
@@ -199,21 +298,25 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       state.reviews[index] = updated;
       return clone(updated);
     },
-    async deleteReview(id) {
+    async deleteReview(id, siteId) {
+      const site = siteOrActive(state, siteId);
       const before = state.reviews.length;
-      state.reviews = state.reviews.filter((item) => item.id !== id);
+      state.reviews = state.reviews.filter((item) => item.id !== id || item.siteId !== site.id);
       return state.reviews.length !== before;
     },
-    async listFloatingPurchases() {
-      return sortByOrder(state.floatingPurchases);
+    async listFloatingPurchases(siteId) {
+      const site = siteOrActive(state, siteId);
+      return sortByOrder(scoped(state.floatingPurchases, site.id));
     },
-    async createFloatingPurchase(input) {
-      const item = buildFloatingPurchase(input, makeId(state.floatingPurchases));
+    async createFloatingPurchase(input, siteId) {
+      const site = siteOrActive(state, siteId);
+      const item = buildFloatingPurchase(input, makeId(state.floatingPurchases), site.id);
       state.floatingPurchases.push(item);
       return clone(item);
     },
-    async updateFloatingPurchase(id, input) {
-      const index = state.floatingPurchases.findIndex((item) => item.id === id);
+    async updateFloatingPurchase(id, input, siteId) {
+      const site = siteOrActive(state, siteId);
+      const index = state.floatingPurchases.findIndex((item) => item.id === id && item.siteId === site.id);
       if (index < 0) return null;
       const updated = {
         ...state.floatingPurchases[index],
@@ -223,9 +326,10 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       state.floatingPurchases[index] = updated;
       return clone(updated);
     },
-    async deleteFloatingPurchase(id) {
+    async deleteFloatingPurchase(id, siteId) {
+      const site = siteOrActive(state, siteId);
       const before = state.floatingPurchases.length;
-      state.floatingPurchases = state.floatingPurchases.filter((item) => item.id !== id);
+      state.floatingPurchases = state.floatingPurchases.filter((item) => item.id !== id || item.siteId !== site.id);
       return state.floatingPurchases.length !== before;
     },
   };

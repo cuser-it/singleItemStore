@@ -11,7 +11,9 @@ import {
   type MediaAssetInput,
   type MediaSection,
   type ReviewInput,
+  type SiteInput,
   type SiteSettingsUpdateInput,
+  type SiteUpdateInput,
   mapBootstrapWithResolvedUrls,
   resolveMediaUrl,
   sortByOrder,
@@ -51,6 +53,21 @@ function toStringArray(value: unknown, fallback: string[] = []) {
 
 function pickSection(value: unknown): MediaSection {
   return value === 'detail' ? 'detail' : 'hero';
+}
+
+function buildSiteInput(body: any): SiteInput {
+  return {
+    name: String(body.name ?? '').trim(),
+    slug: String(body.slug ?? '').trim(),
+    templateSiteId: body.templateSiteId ? Number(body.templateSiteId) : undefined,
+  };
+}
+
+function buildSiteUpdateInput(body: any): SiteUpdateInput {
+  return {
+    name: String(body.name ?? '').trim(),
+    slug: String(body.slug ?? '').trim(),
+  };
 }
 
 function buildMediaInput(body: any): MediaAssetInput {
@@ -211,6 +228,40 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/api/admin/bootstrap', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     res.json(await store.getAdminBootstrap());
+  });
+
+  app.get('/api/admin/sites', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    res.json(await store.listSites());
+  });
+
+  app.post('/api/admin/sites', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    try {
+      res.status(201).json(await store.createSite(buildSiteInput(req.body)));
+    } catch {
+      res.status(400).json({ message: 'site create failed' });
+    }
+  });
+
+  app.put('/api/admin/sites/:id', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    const site = await store.updateSite(Number(req.params.id), buildSiteUpdateInput(req.body));
+    if (!site) {
+      res.status(404).json({ message: 'not found' });
+      return;
+    }
+    res.json(site);
+  });
+
+  app.post('/api/admin/sites/:id/activate', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    const site = await store.switchSite(Number(req.params.id));
+    if (!site) {
+      res.status(404).json({ message: 'not found' });
+      return;
+    }
+    res.json(site);
   });
 
   app.put('/api/admin/site-settings', async (req, res) => {
