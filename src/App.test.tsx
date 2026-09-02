@@ -76,6 +76,8 @@ describe('App', () => {
 
     expect(await screen.findByRole('heading', { name: defaultBootstrap.settings.title })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /宝贝评价\(2\).*查看全部/ })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: '底部操作栏' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '立即购买' })).toHaveClass('sticky-bar__primary');
     expect(screen.getByText('产品详情')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /宝贝评价\(2\).*查看全部/ }));
