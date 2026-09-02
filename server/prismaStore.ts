@@ -139,7 +139,71 @@ function mapFloatingPurchase(record: {
   };
 }
 
+async function ensureSchema() {
+  await client.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "SiteSettings" (
+      "id" INTEGER PRIMARY KEY,
+      "shopName" TEXT NOT NULL,
+      "title" TEXT NOT NULL,
+      "subtitle" TEXT NOT NULL,
+      "highlight" TEXT NOT NULL,
+      "serviceNote" TEXT NOT NULL,
+      "guarantee" JSONB NOT NULL,
+      "productDescription" TEXT NOT NULL,
+      "shippingNote" TEXT NOT NULL,
+      "reminder" TEXT NOT NULL,
+      "shippingTime" TEXT NOT NULL,
+      "salePrice" DOUBLE PRECISION NOT NULL,
+      "originalPrice" DOUBLE PRECISION NOT NULL,
+      "soldText" TEXT NOT NULL,
+      "marqueeText" TEXT NOT NULL,
+      "reviewTags" JSONB NOT NULL,
+      "productVariants" JSONB NOT NULL,
+      "heroImageCount" INTEGER NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await client.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "MediaAsset" (
+      "id" SERIAL PRIMARY KEY,
+      "section" TEXT NOT NULL,
+      "sourceType" TEXT NOT NULL,
+      "source" TEXT NOT NULL,
+      "alt" TEXT NOT NULL,
+      "sortOrder" INTEGER NOT NULL DEFAULT 0,
+      "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await client.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "Review" (
+      "id" SERIAL PRIMARY KEY,
+      "name" TEXT NOT NULL,
+      "content" TEXT NOT NULL,
+      "images" JSONB NOT NULL,
+      "featuredOnHome" BOOLEAN NOT NULL DEFAULT FALSE,
+      "homeOrder" INTEGER NOT NULL DEFAULT 0,
+      "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await client.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "FloatingPurchase" (
+      "id" SERIAL PRIMARY KEY,
+      "content" TEXT NOT NULL,
+      "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+      "sortOrder" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+}
+
 async function ensureSeed() {
+  await ensureSchema();
   const existing = await client.siteSettings.findUnique({ where: { id: 1 } });
   if (!existing) {
     await client.siteSettings.create({
