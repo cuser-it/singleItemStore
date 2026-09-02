@@ -173,10 +173,20 @@ function PublicApp() {
   }, [reviewOpen, checkoutOpen]);
 
   const settings = bootstrap.settings;
-  const selectedSku = useMemo(
-    () => settings.productVariants.find((sku) => sku.id === selectedSkuId) ?? settings.productVariants[0] ?? defaultBootstrap.settings.productVariants[0],
-    [selectedSkuId, settings.productVariants],
-  );
+  const selectedSku = useMemo(() => {
+    const sku = settings.productVariants.find((item) => item.id === selectedSkuId) ?? settings.productVariants[0] ?? defaultBootstrap.settings.productVariants[0];
+    const primarySkuId = settings.productVariants[0]?.id ?? sku.id;
+
+    if (sku.id !== primarySkuId) {
+      return sku;
+    }
+
+    return {
+      ...sku,
+      price: settings.salePrice,
+      originalPrice: settings.originalPrice,
+    };
+  }, [selectedSkuId, settings.productVariants, settings.salePrice, settings.originalPrice]);
 
   const total = selectedSku.price * quantity;
   const reviewTags = settings.reviewTags.length ? settings.reviewTags : defaultBootstrap.settings.reviewTags;

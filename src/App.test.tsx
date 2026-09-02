@@ -22,12 +22,13 @@ vi.mock('./api', () => ({
   uploadAsset: vi.fn(),
 }));
 
-import { fetchAdminMe, saveSiteSettings } from './api';
+import { fetchAdminMe, fetchPublicBootstrap, saveSiteSettings } from './api';
 import { App } from './App';
 
 beforeEach(() => {
   window.history.replaceState({}, '', '/');
   vi.mocked(fetchAdminMe).mockResolvedValue(false);
+  vi.mocked(fetchPublicBootstrap).mockResolvedValue(defaultBootstrap);
   Object.defineProperty(window.navigator, 'userAgent', {
     configurable: true,
     value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
@@ -66,6 +67,22 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: '立即发货' }));
 
     expect(screen.getByLabelText('确认订单')).toHaveClass('sheet--open');
+  });
+
+  it('uses backend site prices in the SVG price banner', async () => {
+    vi.mocked(fetchPublicBootstrap).mockResolvedValue({
+      ...defaultBootstrap,
+      settings: {
+        ...defaultBootstrap.settings,
+        salePrice: 123,
+        originalPrice: 456,
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('¥123.0')).toBeInTheDocument();
+    expect(screen.getByText('划线¥456.0')).toBeInTheDocument();
   });
 
   it('shows the admin login screen on desktop', async () => {
