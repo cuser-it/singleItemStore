@@ -284,7 +284,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/api/payment/mock-notify/:orderNo', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     try {
-      res.json(orderService.mockNotifyParams(String(req.params.orderNo)));
+      res.json(await orderService.mockNotifyParams(String(req.params.orderNo)));
     } catch {
       res.status(404).json({ message: 'not found' });
     }
@@ -369,8 +369,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/api/admin/orders/export', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     try {
-      const columns = String(req.query.columns ?? '').split(',').map((item) => item.trim()).filter(Boolean);
-      const csv = orderService.exportOrders(buildOrderFilters(req.query), columns);
+      const csv = await orderService.exportOrders(buildOrderFilters(req.query), columns);
       res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=utf-8');
       res.header('Content-Disposition', 'attachment; filename="orders.xlsx"');
       res.send(csv);
