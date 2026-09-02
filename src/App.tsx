@@ -557,6 +557,8 @@ function AdminApp() {
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ name: '', content: '', images: '', featuredOnHome: false, homeOrder: 0, enabled: true });
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft>({ content: '', enabled: true, sortOrder: 0 });
   const [reviewStatusFilter, setReviewStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [mediaStatusFilter, setMediaStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [mediaSectionFilter, setMediaSectionFilter] = useState<'all' | MediaSection>('all');
   const [reviewQuery, setReviewQuery] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [selectedReviewIds, setSelectedReviewIds] = useState<number[]>([]);
@@ -794,7 +796,12 @@ function AdminApp() {
   );
 
   const isDesktop = useIsDesktop();
-  const mediaAssets = (bootstrap?.heroImages ?? []).concat(bootstrap?.detailImages ?? []);
+  const allMediaAssets = (bootstrap?.heroImages ?? []).concat(bootstrap?.detailImages ?? []);
+  const mediaAssets = allMediaAssets.filter((item) => {
+    const statusMatch = mediaStatusFilter === 'all' || (mediaStatusFilter === 'enabled' ? item.enabled : !item.enabled);
+    const sectionMatch = mediaSectionFilter === 'all' || item.section === mediaSectionFilter;
+    return statusMatch && sectionMatch;
+  });
   const reviews = (bootstrap?.allReviews ?? []).filter((item) => {
     const statusMatch = reviewStatusFilter === 'all' || (reviewStatusFilter === 'enabled' ? item.enabled : !item.enabled);
     const query = reviewQuery.trim().toLowerCase();
@@ -871,7 +878,7 @@ function AdminApp() {
       <Row gutter={[20, 20]} className="admin-stat-row">
         <Col xs={24} lg={8}>
           <Card>
-            <Statistic title="图片总数" value={mediaAssets.length} prefix={<FileImageOutlined />} />
+            <Statistic title="图片总数" value={allMediaAssets.length} prefix={<FileImageOutlined />} />
           </Card>
         </Col>
         <Col xs={24} lg={8}>
@@ -948,6 +955,28 @@ function AdminApp() {
           </Button>
         </Space>
       </div>
+      <Card className="admin-filter-card">
+        <Space wrap>
+          <Select
+            aria-label="图片状态筛选"
+            value={mediaStatusFilter}
+            onChange={(value) => {
+              setMediaStatusFilter(value);
+              setSelectedMediaIds([]);
+            }}
+            options={[{ value: 'all', label: '全部状态' }, { value: 'enabled', label: '已启用' }, { value: 'disabled', label: '已禁用' }]}
+          />
+          <Select
+            aria-label="图片类型筛选"
+            value={mediaSectionFilter}
+            onChange={(value) => {
+              setMediaSectionFilter(value);
+              setSelectedMediaIds([]);
+            }}
+            options={[{ value: 'all', label: '全部图片' }, { value: 'hero', label: '轮播图' }, { value: 'detail', label: '详情图' }]}
+          />
+        </Space>
+      </Card>
       <Card className="admin-content-card">
         {mediaTable}
       </Card>

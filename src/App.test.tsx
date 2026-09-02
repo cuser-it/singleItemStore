@@ -180,6 +180,8 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: '欢迎回来' })).toBeInTheDocument();
     await user.click(screen.getByRole('menuitem', { name: /图片管理/ }));
     expect(await screen.findByRole('heading', { name: '图片管理' })).toBeInTheDocument();
+    expect(screen.getByText('全部状态')).toBeInTheDocument();
+    expect(screen.getByText('全部图片')).toBeInTheDocument();
 
     await user.click(screen.getAllByRole('button', { name: '删除' })[0]);
     await user.click(await screen.findByRole('button', { name: '确认删除' }));
