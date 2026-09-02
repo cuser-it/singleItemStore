@@ -71,6 +71,10 @@ export async function updateSite(id: number, input: SiteUpdateInput) {
   });
 }
 
+export async function deleteSite(id: number) {
+  return requestJson<void>(`/api/admin/sites/${id}`, { method: 'DELETE' });
+}
+
 export async function activateSite(id: number) {
   return requestJson<Site>(`/api/admin/sites/${id}/activate`, { method: 'POST' });
 }

@@ -252,6 +252,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     res.json(site);
   });
 
+  app.delete('/api/admin/sites/:id', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    const deleted = await store.deleteSite(Number(req.params.id));
+    if (!deleted) {
+      res.status(404).json({ message: 'not found' });
+      return;
+    }
+    res.status(204).end();
+  });
+
   app.post('/api/admin/sites/:id/activate', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     const site = await store.switchSite(Number(req.params.id));

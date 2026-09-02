@@ -24,6 +24,7 @@ export type ContentStore = {
   listSites: () => Promise<Site[]>;
   createSite: (input: SiteInput) => Promise<Site>;
   updateSite: (id: number, input: SiteUpdateInput) => Promise<Site | null>;
+  deleteSite: (id: number) => Promise<boolean>;
   switchSite: (id: number) => Promise<Site | null>;
   getBootstrap: (siteId?: number) => Promise<PublicBootstrap>;
   getAdminBootstrap: () => Promise<AdminBootstrap>;
@@ -202,6 +203,26 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       if (!site) return null;
       state.sites = state.sites.map((item) => ({ ...item, isActive: item.id === id, updatedAt: item.id === id ? new Date().toISOString() : item.updatedAt }));
       return clone(state.sites.find((item) => item.id === id)!);
+    },
+    async deleteSite(id) {
+      const site = state.sites.find((item) => item.id === id);
+      if (!site || state.sites.length <= 1) return false;
+      state.sites = state.sites.filter((item) => item.id !== id);
+      state.settings = state.settings.filter((item) => item.siteId !== id);
+      state.mediaAssets = state.mediaAssets.filter((item) => item.siteId !== id);
+      state.reviews = state.reviews.filter((item) => item.siteId !== id);
+      state.floatingPurchases = state.floatingPurchases.filter((item) => item.siteId !== id);
+      if (site.isActive) {
+        const nextSite = state.sites[0];
+        if (nextSite) {
+          state.sites = state.sites.map((item) => ({
+            ...item,
+            isActive: item.id === nextSite.id,
+            updatedAt: item.id === nextSite.id ? new Date().toISOString() : item.updatedAt,
+          }));
+        }
+      }
+      return true;
     },
     async getBootstrap(siteId) {
       const site = siteOrActive(state, siteId);

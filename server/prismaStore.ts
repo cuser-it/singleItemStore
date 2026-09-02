@@ -451,6 +451,21 @@ export async function createPrismaStore(): Promise<ContentStore> {
       ]);
       return mapSite((await client.site.findUnique({ where: { id } }))!);
     },
+    async deleteSite(id: number) {
+      const exists = await client.site.findUnique({ where: { id } });
+      if (!exists) return false;
+      const count = await client.site.count();
+      if (count <= 1) return false;
+      await client.site.delete({ where: { id } });
+      if (exists.isActive) {
+        const nextSite = await client.site.findFirst({ orderBy: [{ id: 'asc' }] });
+        if (nextSite) {
+          await client.site.updateMany({ data: { isActive: false } });
+          await client.site.update({ where: { id: nextSite.id }, data: { isActive: true } });
+        }
+      }
+      return true;
+    },
     async getBootstrap(siteId?: number): Promise<PublicBootstrap> {
       const resolvedSiteId = await resolveSiteId(siteId);
       const [site, settings, mediaAssets, reviews, floatingPurchases] = await Promise.all([

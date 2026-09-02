@@ -18,6 +18,7 @@ vi.mock('./api', () => ({
   deleteFloatingPurchase: vi.fn(),
   deleteMediaAsset: vi.fn(),
   deleteReview: vi.fn(),
+  deleteSite: vi.fn(),
   fetchAdminBootstrap: vi.fn(),
   fetchAdminMe: vi.fn(),
   fetchPublicBootstrap: vi.fn(),
@@ -31,7 +32,7 @@ vi.mock('./api', () => ({
   uploadAsset: vi.fn(),
 }))
 
-import { activateSite, createReview, createSite, deleteReview, fetchAdminBootstrap, fetchAdminMe, fetchPublicBootstrap, saveSiteSettings, uploadAsset } from './api';
+import { activateSite, createReview, createSite, deleteFloatingPurchase, deleteMediaAsset, deleteReview, deleteSite, fetchAdminBootstrap, fetchAdminMe, fetchPublicBootstrap, saveSiteSettings, uploadAsset } from './api';
 import { App } from './App';
 
 beforeEach(() => {
@@ -43,7 +44,10 @@ beforeEach(() => {
   vi.mocked(activateSite).mockResolvedValue({ ...defaultBootstrap.site, id: 2, name: '第二站点', slug: 'second-site', isActive: true });
   vi.mocked(uploadAsset).mockResolvedValue({ source: '/img/review-upload.jpg', resolvedUrl: '/img/review-upload.jpg' });
   vi.mocked(createReview).mockResolvedValue({ ...defaultBootstrap.allReviews[0], id: 99, images: ['/img/review-upload.jpg'] });
+  vi.mocked(deleteFloatingPurchase).mockResolvedValue(undefined);
+  vi.mocked(deleteMediaAsset).mockResolvedValue(undefined);
   vi.mocked(deleteReview).mockResolvedValue(undefined);
+  vi.mocked(deleteSite).mockResolvedValue(true);
   Object.defineProperty(window.navigator, 'userAgent', {
     configurable: true,
     value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
@@ -164,6 +168,59 @@ describe('App', () => {
 
     await user.click(screen.getAllByRole('button', { name: '切换' })[0]);
     expect(activateSite).toHaveBeenCalledWith(2);
+  });
+
+  it('deletes a media asset after confirmation', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchAdminMe).mockResolvedValue(true);
+    window.history.replaceState({}, '', '/admin');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '欢迎回来' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: /图片管理/ }));
+    expect(await screen.findByRole('heading', { name: '图片管理' })).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: '删除' })[0]);
+    await user.click(await screen.findByRole('button', { name: '确认删除' }));
+
+    expect(deleteMediaAsset).toHaveBeenCalledWith(defaultBootstrap.heroImages[0].id);
+  });
+
+  it('deletes a floating purchase after confirmation', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchAdminMe).mockResolvedValue(true);
+    window.history.replaceState({}, '', '/admin');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '欢迎回来' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: /浮层文案管理/ }));
+    expect(await screen.findByRole('heading', { name: '浮层文案管理' })).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: '删除' })[0]);
+    await user.click(await screen.findByRole('button', { name: '确认删除' }));
+
+    expect(deleteFloatingPurchase).toHaveBeenCalledWith(defaultBootstrap.floatingPurchases[0].id);
+  });
+
+  it('deletes a non-active site after confirmation', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchAdminMe).mockResolvedValue(true);
+    window.history.replaceState({}, '', '/admin');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '欢迎回来' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: /站点管理/ }));
+    expect(await screen.findByRole('heading', { name: '站点管理中心' })).toBeInTheDocument();
+
+    const secondSiteRow = screen.getByText('第二站点').closest('tr');
+    expect(secondSiteRow).not.toBeNull();
+    await user.click(within(secondSiteRow as HTMLElement).getByRole('button', { name: '删除' }));
+    await user.click(await screen.findByRole('button', { name: '确认删除' }));
+
+    expect(deleteSite).toHaveBeenCalledWith(2);
   });
 
   it('uploads a review image and fills the returned link before saving', async () => {
