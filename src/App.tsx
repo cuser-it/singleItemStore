@@ -1180,7 +1180,7 @@ function AdminApp() {
           <Descriptions.Item label="网关地址">{paymentSettings?.gatewayUrl}</Descriptions.Item>
           <Descriptions.Item label="商户号">{paymentSettings?.merchantId}</Descriptions.Item>
           <Descriptions.Item label="商户密钥">{paymentSettings?.secretMasked || '未设置'}</Descriptions.Item>
-          <Descriptions.Item label="启用渠道">{paymentSettings?.enabledChannels.join(', ')}</Descriptions.Item>
+          <Descriptions.Item label="启用渠道">{paymentSettings?.enabledChannels?.join(', ') || '未启用'}</Descriptions.Item>
           <Descriptions.Item label="回调地址">{paymentSettings?.notifyUrl}</Descriptions.Item>
           <Descriptions.Item label="返回地址">{paymentSettings?.returnUrl}</Descriptions.Item>
         </Descriptions>

@@ -309,6 +309,24 @@ describe('App', () => {
 
     expect(deleteReview).toHaveBeenCalledWith(defaultBootstrap.allReviews[0].id);
   });
+  it('keeps payment settings page available when enabled channels are missing', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchAdminMe).mockResolvedValue(true);
+    vi.mocked(fetchPaymentSettings).mockResolvedValue({
+      gatewayUrl: 'https://pay.example.test/submit.php',
+      merchantId: 'demo',
+      notifyUrl: '/api/payment/epay/notify',
+      returnUrl: '/payment/return',
+      secretMasked: 'dem******ret',
+      updatedAt: new Date().toISOString(),
+    } as Awaited<ReturnType<typeof fetchPaymentSettings>>);
+    window.history.replaceState({}, '', '/admin');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: '欢迎回来' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: '支付配置' }));
+    expect(await screen.findByRole('heading', { name: '支付配置' })).toBeInTheDocument();
+    expect(screen.getByText('未启用')).toBeInTheDocument();
+  });
 
   it('blocks admin pages on mobile', async () => {
     Object.defineProperty(window.navigator, 'userAgent', {

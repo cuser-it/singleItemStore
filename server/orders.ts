@@ -179,7 +179,7 @@ function mapPaymentSettingsRecord(record: {
   return {
     gatewayUrl: record.gatewayUrl,
     merchantId: record.merchantId,
-    enabledChannels,
+    enabledChannels: Array.isArray(record.enabledChannels) ? record.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat') : ['alipay', 'wechat'],
     notifyUrl: record.notifyUrl,
     returnUrl: record.returnUrl,
     secretMasked: maskSecret(secret),
