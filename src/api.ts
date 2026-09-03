@@ -248,5 +248,5 @@ export async function exportOrders(params: URLSearchParams) {
 }
 
 export async function fetchPaymentSuccessConfig() {
-  return requestJson<{ message: string; qrCodeUrl: string }>('/api/public/payment-success-config');
+  return requestJson<{ message: string; customerServiceUrl: string; customerServiceQrCode?: string }>('/api/public/payment-success-config');
 }

@@ -1,68 +1,63 @@
 import { useEffect, useState } from 'react';
-import { Result, Typography, Card, Button, Skeleton, Space } from 'antd';
+import { Result, Typography, Card, Button, Skeleton, Space, Modal } from 'antd';
 import { CheckCircleOutlined, HomeOutlined, WechatOutlined } from '@ant-design/icons';
 import { fetchPaymentSuccessConfig } from './api';
+import CustomerServiceModal from './components/CustomerServiceModal';
 
-const { Title, Paragraph } = Typography;
+const { Title, Paragraph, Text } = Typography;
 
 export default function PaymentSuccess() {
-  const [config, setConfig] = useState<{ message: string; customerServiceUrl: string } | null>(null);
+  const [config, setConfig] = useState<{ message: string; customerServiceUrl: string; customerServiceQrCode?: string } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [qrCodeBase64, setQrCodeBase64] = useState<string>('');
-  const [isWeixinLink, setIsWeixinLink] = useState(false);
+  const [customerServiceModalVisible, setCustomerServiceModalVisible] = useState(false);
+  const [returnInterceptCount, setReturnInterceptCount] = useState(0);
 
   useEffect(() => {
     fetchPaymentSuccessConfig()
-      .then(async (data) => {
+      .then((data) => {
         setConfig(data);
-        
-        if (data.customerServiceUrl) {
-          // 判断是微信直链还是图片URL
-          if (data.customerServiceUrl.startsWith('weixin://')) {
-            // 微信直链，生成二维码
-            setIsWeixinLink(true);
-            try {
-              const QRCode = (await import('qrcode')).default;
-              const qrDataUrl = await QRCode.toDataURL(data.customerServiceUrl, {
-                width: 200,
-                margin: 2,
-                color: {
-                  dark: '#000000',
-                  light: '#FFFFFF'
-                }
-              });
-              setQrCodeBase64(qrDataUrl);
-            } catch (error) {
-              console.error('生成二维码失败:', error);
-            }
-          } else if (data.customerServiceUrl.startsWith('http://') || data.customerServiceUrl.startsWith('https://')) {
-            // 图片URL，转换为base64
-            try {
-              const response = await fetch(data.customerServiceUrl);
-              const blob = await response.blob();
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                setQrCodeBase64(reader.result as string);
-              };
-              reader.readAsDataURL(blob);
-            } catch (error) {
-              console.error('图片转换base64失败:', error);
-            }
-          }
-        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  const handleOpenWeixin = () => {
-    if (config?.customerServiceUrl) {
-      window.location.href = config.customerServiceUrl;
-    }
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (returnInterceptCount < 1 && (config?.customerServiceUrl || config?.customerServiceQrCode)) {
+        e.preventDefault();
+        e.returnValue = '请先添加客服微信';
+        return '请先添加客服微信';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [returnInterceptCount, config]);
+
+  const handleOpenCustomerService = () => {
+    setCustomerServiceModalVisible(true);
   };
 
   const handleBackHome = () => {
-    window.location.href = '/';
+    if (returnInterceptCount < 1 && (config?.customerServiceUrl || config?.customerServiceQrCode)) {
+      Modal.confirm({
+        title: '请先添加客服微信',
+        content: '为了后续发货和售后服务，建议您先添加客服微信',
+        okText: '立即添加',
+        cancelText: '我已添加，返回首页',
+        icon: <WechatOutlined style={{ color: '#07c160' }} />,
+        onOk: () => {
+          setCustomerServiceModalVisible(true);
+        },
+        onCancel: () => {
+          setReturnInterceptCount(2);
+          window.location.href = '/';
+        }
+      });
+      setReturnInterceptCount(1);
+    } else {
+      window.location.href = '/';
+    }
   };
 
   if (loading) {
@@ -83,6 +78,8 @@ export default function PaymentSuccess() {
   }
 
   const message = config?.message || '添加客服领取服用说明';
+  const hasCustomerService = config?.customerServiceUrl || config?.customerServiceQrCode;
+  const orderNo = new URLSearchParams(window.location.search).get('orderNo');
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -94,61 +91,70 @@ export default function PaymentSuccess() {
         />
         
         <div style={{ textAlign: 'center', padding: '0 24px 24px' }}>
-          <Title level={4} style={{ marginBottom: '20px' }}>{message}</Title>
-          
-          {qrCodeBase64 && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '24px' }}>
-              <img 
-                src={qrCodeBase64} 
-                alt="客服二维码" 
-                style={{ 
-                  width: '200px', 
-                  height: '200px', 
-                  border: '2px solid #f0f0f0', 
-                  borderRadius: '8px',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                }} 
-              />
-              
-              {isWeixinLink && (
-                <Button 
-                  type="primary" 
-                  icon={<WechatOutlined />} 
+          {orderNo && (
+            <div style={{ marginBottom: '24px', padding: '16px', background: '#f9f9f9', borderRadius: '8px' }}>
+              <Text strong style={{ fontSize: '16px' }}>订单号：</Text>
+              <Text style={{ fontSize: '18px', color: '#1890ff' }}>{orderNo}</Text>
+              <div style={{ marginTop: '8px' }}>
+                <Text type="secondary" style={{ fontSize: '12px' }}>凭订单号 + 手机号可在首页查询订单</Text>
+              </div>
+            </div>
+          )}
+
+          {hasCustomerService && (
+            <>
+              <Title level={4} style={{ marginBottom: '20px' }}>{message}</Title>
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                <Button
+                  type="primary"
+                  icon={<WechatOutlined />}
                   size="large"
-                  onClick={handleOpenWeixin}
-                  style={{ 
-                    marginTop: '20px',
+                  onClick={handleOpenCustomerService}
+                  block
+                  style={{
                     background: '#07c160',
                     borderColor: '#07c160',
                     height: '48px',
                     fontSize: '16px',
-                    borderRadius: '24px',
-                    paddingLeft: '32px',
-                    paddingRight: '32px'
+                    borderRadius: '24px'
                   }}
                 >
-                  打开微信添加客服
+                  添加客服微信
                 </Button>
-              )}
-            </div>
+                <Button
+                  icon={<HomeOutlined />}
+                  size="large"
+                  onClick={handleBackHome}
+                  block
+                  style={{ borderRadius: '24px', height: '48px' }}
+                >
+                  返回首页
+                </Button>
+              </Space>
+            </>
           )}
-          
-          <Paragraph style={{ marginTop: '24px', color: '#999', fontSize: '14px' }}>
-            {isWeixinLink ? '点击上方按钮或扫描二维码添加客服' : '长按二维码保存图片，在微信中扫一扫添加客服'}
-          </Paragraph>
-          
-          <Space style={{ marginTop: '32px' }}>
-            <Button 
-              icon={<HomeOutlined />} 
+
+          {!hasCustomerService && (
+            <Button
+              icon={<HomeOutlined />}
               size="large"
-              onClick={handleBackHome}
-              style={{ borderRadius: '8px' }}
+              onClick={() => window.location.href = '/'}
+              block
+              type="primary"
+              style={{ borderRadius: '24px', height: '48px', marginTop: '16px' }}
             >
               返回首页
             </Button>
-          </Space>
+          )}
         </div>
       </Card>
+
+      <CustomerServiceModal
+        visible={customerServiceModalVisible}
+        onClose={() => setCustomerServiceModalVisible(false)}
+        qrCodeUrl={config?.customerServiceQrCode}
+        serviceLink={config?.customerServiceUrl}
+      />
     </div>
   );
 }
