@@ -87,6 +87,7 @@ import {
   softDeleteOrder,
   exportOrders,
 } from './api';
+import { useAdminRouter, getPageKey, ADMIN_ROUTES } from './AdminRouter';
 
 function usePathname() {
   const [pathname, setPathname] = useState(window.location.pathname);
@@ -648,11 +649,12 @@ function AdminBlocked() {
 }
 
 function AdminApp() {
+  const { currentPath, navigate } = useAdminRouter();
+  const activePage = getPageKey(currentPath);
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [bootstrap, setBootstrap] = useState<AdminBootstrap | null>(null);
   const [password, setPassword] = useState('');
   const [settings, setSettings] = useState<SiteSettings | null>(null);
-  const [activePage, setActivePage] = useState('dashboard');
   const [loading, setLoading] = useState(false);
   const [drawer, setDrawer] = useState<'settings' | 'site' | 'media' | 'review' | 'purchase' | 'sku' | 'payment' | null>(null);
   const [siteDraft, setSiteDraft] = useState<SiteDraft>({ name: '', slug: '', templateSiteId: undefined });
@@ -1119,7 +1121,7 @@ function AdminApp() {
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card hoverable onClick={() => setActivePage('settings')}>
+          <Card hoverable onClick={() => navigate(ADMIN_ROUTES.SETTINGS)}>
             <Descriptions column={1} title="站点管理">
               <Descriptions.Item label="站点数量">{bootstrap?.sites.length ?? 0} 个</Descriptions.Item>
               <Descriptions.Item label="当前标识">{bootstrap?.site.slug}</Descriptions.Item>
@@ -1295,7 +1297,7 @@ function AdminApp() {
   );
   const drawerTitle = drawer === 'settings' ? '编辑站点配置' : drawer === 'site' ? (siteDraft.id ? '编辑站点' : '新建站点') : drawer === 'media' ? '编辑图片资源' : drawer === 'review' ? '编辑评价' : drawer === 'sku' ? (skuDraft.id ? '编辑规格' : '新增规格') : drawer === 'payment' ? '支付配置' : '编辑浮层文案';
   const drawerContent = drawer === 'settings' ? settingsForm : drawer === 'site' ? siteForm : drawer === 'media' ? mediaForm : drawer === 'review' ? reviewForm : drawer === 'sku' ? skuForm : drawer === 'payment' ? paymentForm : purchaseForm;
-  return <Layout className="antd-admin-layout"><Sider theme="light" width={260} breakpoint="lg" collapsedWidth={80}><div className="antd-admin-brand"><div className="antd-admin-logo"><TagsOutlined /></div><div><strong>管理系统</strong><span>多站点后台</span></div></div><Menu mode="inline" selectedKeys={[activePage]} items={navItems} onClick={({ key }) => setActivePage(key)} /><div className="antd-admin-account"><Tag color="blue">A</Tag><div><strong>管理员</strong><span>{bootstrap?.site.name ?? 'System Admin'}</span></div></div></Sider><Layout><Header className="antd-admin-header"><Space><Title level={4}>管理中心</Title>{bootstrap ? <Select className="admin-site-switch" value={bootstrap.activeSiteId} onChange={(id) => { const site = bootstrap.sites.find((item) => item.id === id); if (site) void handleActivateSite(site); }} options={bootstrap.sites.map((site) => ({ value: site.id, label: site.name }))} /> : null}</Space><Space><Button type="text" icon={<BellOutlined />} aria-label="通知" /><Button type="text" icon={<QuestionCircleOutlined />} aria-label="帮助" /><Button type="link" icon={<LogoutOutlined />} onClick={handleLogout}>退出登录</Button></Space></Header><Content className="antd-admin-content">{loading && !bootstrap ? <Spin size="large" /> : content}</Content></Layout><Drawer title={drawerTitle} open={Boolean(drawer)} onClose={closeDrawer} width={drawer === 'settings' || drawer === 'payment' ? 720 : 560} destroyOnClose>{drawerContent}</Drawer></Layout>;
+  return <Layout className="antd-admin-layout"><Sider theme="light" width={260} breakpoint="lg" collapsedWidth={80}><div className="antd-admin-brand"><div className="antd-admin-logo"><TagsOutlined /></div><div><strong>管理系统</strong><span>多站点后台</span></div></div><Menu mode="inline" selectedKeys={[activePage]} items={navItems} onClick={({ key }) => navigate(`/${key}`)} /><div className="antd-admin-account"><Tag color="blue">A</Tag><div><strong>管理员</strong><span>{bootstrap?.site.name ?? 'System Admin'}</span></div></div></Sider><Layout><Header className="antd-admin-header"><Space><Title level={4}>管理中心</Title>{bootstrap ? <Select className="admin-site-switch" value={bootstrap.activeSiteId} onChange={(id) => { const site = bootstrap.sites.find((item) => item.id === id); if (site) void handleActivateSite(site); }} options={bootstrap.sites.map((site) => ({ value: site.id, label: site.name }))} /> : null}</Space><Space><Button type="text" icon={<BellOutlined />} aria-label="通知" /><Button type="text" icon={<QuestionCircleOutlined />} aria-label="帮助" /><Button type="link" icon={<LogoutOutlined />} onClick={handleLogout}>退出登录</Button></Space></Header><Content className="antd-admin-content">{loading && !bootstrap ? <Spin size="large" /> : content}</Content></Layout><Drawer title={drawerTitle} open={Boolean(drawer)} onClose={closeDrawer} width={drawer === 'settings' || drawer === 'payment' ? 720 : 560} destroyOnClose>{drawerContent}</Drawer></Layout>;
 }
 
 export function App() {
