@@ -409,49 +409,31 @@ export class OrderService {
       return this.skus.get(resolvedSiteId)!;
     }
     const existing = await prismaClient.productSku.findMany({ where: { siteId: resolvedSiteId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
-    const existingByCode = new Map(existing.map((sku) => [sku.skuCode, sku]));
-    const nextCodes = new Set(variants.map((variant) => variant.id));
+    
+    // 如果 SKU 已存在，直接返回，不覆盖手动编辑的数据
+    if (existing.length > 0) {
+      return existing.map(mapSkuRecord);
+    }
+    
+    // 仅在 SKU 不存在时，从 productVariants 初始化
     const mapped: ProductSku[] = [];
     for (const [index, variant] of variants.entries()) {
-      const current = existingByCode.get(variant.id);
       const payload = mapVariantToSku(variant, resolvedSiteId, index, nowIso());
-      if (current) {
-        const updated = await prismaClient.productSku.update({
-          where: { id: current.id },
-          data: {
-            skuCode: payload.skuCode,
-            name: payload.name,
-            subtitle: payload.subtitle,
-            price: payload.price,
-            originalPrice: payload.originalPrice,
-            saleLabel: payload.saleLabel,
-            highlight: payload.highlight ?? null,
-            enabled: current.enabled,
-            sortOrder: payload.sortOrder,
-          },
-        });
-        mapped.push(mapSkuRecord(updated));
-      } else {
-        const created = await prismaClient.productSku.create({
-          data: {
-            siteId: resolvedSiteId,
-            skuCode: payload.skuCode,
-            name: payload.name,
-            subtitle: payload.subtitle,
-            price: payload.price,
-            originalPrice: payload.originalPrice,
-            saleLabel: payload.saleLabel,
-            highlight: payload.highlight ?? null,
-            enabled: true,
-            sortOrder: payload.sortOrder,
-          },
-        });
-        mapped.push(mapSkuRecord(created));
-      }
-    }
-    const staleIds = existing.filter((sku) => !nextCodes.has(sku.skuCode)).map((sku) => sku.id);
-    if (staleIds.length) {
-      await prismaClient.productSku.deleteMany({ where: { id: { in: staleIds } } });
+      const created = await prismaClient.productSku.create({
+        data: {
+          siteId: resolvedSiteId,
+          skuCode: payload.skuCode,
+          name: payload.name,
+          subtitle: payload.subtitle,
+          price: payload.price,
+          originalPrice: payload.originalPrice,
+          saleLabel: payload.saleLabel,
+          highlight: payload.highlight ?? null,
+          enabled: true,
+          sortOrder: payload.sortOrder,
+        },
+      });
+      mapped.push(mapSkuRecord(created));
     }
     return mapped;
   }
@@ -528,7 +510,10 @@ export class OrderService {
         enabled: payload.enabled,
         sortOrder: payload.sortOrder,
       },
-    }).catch(() => null);
+    }).catch((err) => {
+      console.error('[updateSku] Database update failed:', err);
+      return null;
+    });
     if (!updated) return null;
     this.log('sku_updated', `SKU ${updated.skuCode} updated`, actor, undefined, { skuId: id });
     return mapSkuRecord(updated);
