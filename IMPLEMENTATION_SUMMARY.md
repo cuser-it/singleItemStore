@@ -213,10 +213,10 @@ f682f03 feat: 添加客服二维码字段到 SiteSettings
 ## 遗留问题与建议
 
 ### 数据库迁移
-- ⚠️ **重要**: `prisma/schema.prisma` 已更新，但未执行数据库迁移
-- 生产环境需要手动运行 `npx prisma db push` 或 `npx prisma migrate deploy`
-- 建议在部署前先备份数据库
-
+- ✅ **已完成**: 使用 DBX 手动执行 SQL 添加 `customerServiceQrCode` 字段
+- 执行命令: `ALTER TABLE "SiteSettings" ADD COLUMN IF NOT EXISTS "customerServiceQrCode" TEXT;`
+- 已运行 `npx prisma generate` 重新生成客户端
+- 服务启动正常，字段已验证
 ### 后续优化建议
 1. 增加客服二维码删除按钮（目前只能清空输入框）
 2. 支持批量上传多个客服二维码（AB 测试场景）
