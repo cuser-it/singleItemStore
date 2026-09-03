@@ -44,6 +44,7 @@ model SiteSettings {
   heroImageCount     Int
   paymentSuccessMessage String @default("添加客服领取服用说明")
   customerServiceUrl String @default("")
+  customerServiceQrCode String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
