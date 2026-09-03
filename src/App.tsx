@@ -442,7 +442,7 @@ function PublicApp() {
           </div>
         </section>
 
-        <section className="card pad order-query-card" style={{ marginTop: 'min(10vh, 80px)', marginBottom: '40px' }}>
+        <section className="card pad order-query-card" style={{ marginBottom: '40px' }}>
           <div className="buy-title" style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px', textAlign: 'center' }}>订单查询</div>
           <div className="order-query-form" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <input value={queryOrderNo} onChange={(event) => setQueryOrderNo(event.target.value)} placeholder="请输入订单号" style={{ padding: '12px 16px', fontSize: '16px', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
