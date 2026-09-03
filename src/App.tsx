@@ -421,14 +421,55 @@ function PublicApp() {
           </div>
         </section>
 
-        <section className="card pad order-query-card">
-          <div className="buy-title">订单查询</div>
-          <div className="order-query-form">
-            <input value={queryOrderNo} onChange={(event) => setQueryOrderNo(event.target.value)} placeholder="订单号" />
-            <input value={queryPhone} onChange={(event) => setQueryPhone(event.target.value)} inputMode="tel" maxLength={11} placeholder="收货手机号" />
-            <button type="button" onClick={() => void handlePublicOrderQuery()}>查询</button>
+        <section className="card pad order-query-card" style={{ marginTop: 'min(10vh, 80px)', marginBottom: '40px' }}>
+          <div className="buy-title" style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px', textAlign: 'center' }}>订单查询</div>
+          <div className="order-query-form" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <input value={queryOrderNo} onChange={(event) => setQueryOrderNo(event.target.value)} placeholder="请输入订单号" style={{ padding: '12px 16px', fontSize: '16px', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+            <input value={queryPhone} onChange={(event) => setQueryPhone(event.target.value)} inputMode="tel" maxLength={11} placeholder="请输入收货手机号" style={{ padding: '12px 16px', fontSize: '16px', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+            <button type="button" onClick={() => void handlePublicOrderQuery()} style={{ padding: '12px', fontSize: '16px', fontWeight: 'bold', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>查询订单</button>
           </div>
-          {queriedOrder ? <div className="order-query-result"><b>{queriedOrder.orderNo}</b><span>{queriedOrder.paymentStatus} / {queriedOrder.fulfillmentStatus}</span><span>{queriedOrder.logisticsNo ? `${queriedOrder.logisticsCompany ?? ''} ${queriedOrder.logisticsNo}` : '待发货'}</span><span>{queriedOrder.recipientName} {queriedOrder.phone}</span><span>{queriedOrder.address}</span></div> : null}
+          {queriedOrder && (
+            <div className="order-query-result" style={{ marginTop: '24px', padding: '20px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb' }}>
+                  <span style={{ fontSize: '14px', color: '#666' }}>订单号</span>
+                  <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>{queriedOrder.orderNo}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '14px', color: '#666' }}>下单时间</span>
+                  <span style={{ fontSize: '14px' }}>{new Date(queriedOrder.createdAt).toLocaleString('zh-CN')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '14px', color: '#666' }}>支付金额</span>
+                  <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#f5222d' }}>¥{queriedOrder.totalAmount}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '14px', color: '#666' }}>订单状态</span>
+                  <span style={{ fontSize: '14px', padding: '4px 12px', borderRadius: '12px', background: queriedOrder.paymentStatus === 'PAID' ? '#f6ffed' : '#fff7e6', color: queriedOrder.paymentStatus === 'PAID' ? '#52c41a' : '#fa8c16', fontWeight: 'bold' }}>
+                    {queriedOrder.paymentStatus === 'PAID' ? '已支付' : queriedOrder.paymentStatus === 'PAYING' ? '支付中' : queriedOrder.paymentStatus === 'REFUNDED' ? '已退款' : '待支付'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '14px', color: '#666' }}>收件人</span>
+                  <span style={{ fontSize: '14px' }}>{queriedOrder.recipientName}</span>
+                </div>
+                {queriedOrder.fulfillmentStatus === 'SHIPPED' && queriedOrder.logisticsNo && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
+                    <span style={{ fontSize: '14px', color: '#666' }}>物流单号</span>
+                    <span style={{ fontSize: '14px', color: '#1890ff', cursor: 'pointer', userSelect: 'all' }} onClick={() => { navigator.clipboard.writeText(queriedOrder.logisticsNo ?? '').then(() => showToast('物流单号已复制')).catch(() => {}); }}>
+                      {queriedOrder.logisticsCompany ?? ''} {queriedOrder.logisticsNo}
+                    </span>
+                  </div>
+                )}
+                {queriedOrder.fulfillmentStatus === 'WAIT_SHIP' && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
+                    <span style={{ fontSize: '14px', color: '#666' }}>发货状态</span>
+                    <span style={{ fontSize: '14px', color: '#fa8c16' }}>待发货</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </section>
       </main>
 
