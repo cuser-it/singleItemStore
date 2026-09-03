@@ -253,11 +253,6 @@ async function ensureSchema() {
   await client.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "FloatingPurchase_siteId_idx" ON "FloatingPurchase" ("siteId")');
 }
 
-async function nextSettingsId() {
-  const rows = await client.$queryRaw<Array<{ max: number | null }>>`SELECT MAX("id")::int AS max FROM "SiteSettings"`;
-  return (rows[0]?.max ?? 0) + 1;
-}
-
 async function ensureSeed() {
   await ensureSchema();
 
@@ -267,6 +262,7 @@ async function ensureSeed() {
     create: { id: DEFAULT_SITE_ID, name: defaultBootstrap.site.name, slug: defaultBootstrap.site.slug, isActive: true },
   });
   await client.$executeRawUnsafe('SELECT setval(pg_get_serial_sequence(\'"Site"\', \'id\'), COALESCE((SELECT MAX("id") FROM "Site"), 1))');
+  await client.$executeRawUnsafe('SELECT setval(pg_get_serial_sequence(\'"SiteSettings"\', \'id\'), COALESCE((SELECT MAX("id") FROM "SiteSettings"), 1))');
 
   await client.$executeRawUnsafe(`UPDATE "SiteSettings" SET "siteId" = ${defaultSite.id} WHERE "siteId" IS NULL`);
   await client.$executeRawUnsafe(`UPDATE "MediaAsset" SET "siteId" = ${defaultSite.id} WHERE "siteId" IS NULL`);
@@ -277,7 +273,6 @@ async function ensureSeed() {
   if (!existingSettings) {
     await client.siteSettings.create({
       data: {
-        id: await nextSettingsId(),
         siteId: defaultSite.id,
         shopName: defaultBootstrap.settings.shopName,
         title: defaultBootstrap.settings.title,
@@ -366,29 +361,58 @@ async function resolveSiteId(siteId?: number) {
 async function duplicateSiteContent(templateSiteId: number, newSiteId: number) {
   const timestamp = new Date();
   const templateSettings = await client.siteSettings.findUnique({ where: { siteId: templateSiteId } });
-  const settings = templateSettings ?? { ...defaultSiteSettings, id: 0, siteId: templateSiteId, createdAt: timestamp, updatedAt: timestamp };
-
+  
+  if (!templateSettings) {
+    console.error(`[duplicateSiteContent] Template site ${templateSiteId} has no settings, using default settings`);
+    const settings = { ...defaultSiteSettings, id: 0, siteId: templateSiteId, createdAt: timestamp, updatedAt: timestamp };
+    
+    await client.siteSettings.create({
+      data: {
+        siteId: newSiteId,
+        shopName: settings.shopName,
+        title: settings.title,
+        subtitle: settings.subtitle,
+        highlight: settings.highlight,
+        serviceNote: settings.serviceNote,
+        guarantee: toJsonValue(settings.guarantee as unknown),
+        productDescription: settings.productDescription,
+        shippingNote: settings.shippingNote,
+        reminder: settings.reminder,
+        shippingTime: settings.shippingTime,
+        salePrice: settings.salePrice,
+        originalPrice: settings.originalPrice,
+        soldText: settings.soldText,
+        marqueeText: settings.marqueeText,
+        reviewTags: toJsonValue(settings.reviewTags as unknown),
+        productVariants: toJsonValue(settings.productVariants as unknown),
+        heroImageCount: settings.heroImageCount,
+      },
+    });
+    return;
+  }
+  
+  console.log(`[duplicateSiteContent] Copying from site ${templateSiteId} (${templateSettings.shopName}) to site ${newSiteId}`);
+  
   await client.siteSettings.create({
     data: {
-      id: await nextSettingsId(),
       siteId: newSiteId,
-      shopName: settings.shopName,
-      title: settings.title,
-      subtitle: settings.subtitle,
-      highlight: settings.highlight,
-      serviceNote: settings.serviceNote,
-      guarantee: toJsonValue(settings.guarantee as unknown),
-      productDescription: settings.productDescription,
-      shippingNote: settings.shippingNote,
-      reminder: settings.reminder,
-      shippingTime: settings.shippingTime,
-      salePrice: settings.salePrice,
-      originalPrice: settings.originalPrice,
-      soldText: settings.soldText,
-      marqueeText: settings.marqueeText,
-      reviewTags: toJsonValue(settings.reviewTags as unknown),
-      productVariants: toJsonValue(settings.productVariants as unknown),
-      heroImageCount: settings.heroImageCount,
+      shopName: templateSettings.shopName,
+      title: templateSettings.title,
+      subtitle: templateSettings.subtitle,
+      highlight: templateSettings.highlight,
+      serviceNote: templateSettings.serviceNote,
+      guarantee: toJsonValue(templateSettings.guarantee as unknown),
+      productDescription: templateSettings.productDescription,
+      shippingNote: templateSettings.shippingNote,
+      reminder: templateSettings.reminder,
+      shippingTime: templateSettings.shippingTime,
+      salePrice: templateSettings.salePrice,
+      originalPrice: templateSettings.originalPrice,
+      soldText: templateSettings.soldText,
+      marqueeText: templateSettings.marqueeText,
+      reviewTags: toJsonValue(templateSettings.reviewTags as unknown),
+      productVariants: toJsonValue(templateSettings.productVariants as unknown),
+      heroImageCount: templateSettings.heroImageCount,
     },
   });
 
@@ -413,6 +437,8 @@ async function duplicateSiteContent(templateSiteId: number, newSiteId: number) {
       data: floatingPurchases.map((purchase) => ({ siteId: newSiteId, content: purchase.content, enabled: purchase.enabled, sortOrder: purchase.sortOrder })),
     });
   }
+  
+  console.log(`[duplicateSiteContent] Successfully copied site content: ${mediaAssets.length} media assets, ${reviews.length} reviews, ${floatingPurchases.length} floating purchases`);
 }
 
 export async function createPrismaStore(): Promise<ContentStore> {
@@ -427,16 +453,24 @@ export async function createPrismaStore(): Promise<ContentStore> {
       return records.map(mapSite);
     },
     async createSite(input: SiteInput) {
-      const templateId = input.templateSiteId && await client.site.findUnique({ where: { id: input.templateSiteId } }) ? input.templateSiteId : (await getActiveSiteRecord()).id;
-      const record = await client.site.create({
-        data: {
-          name: input.name.trim() || '新站点',
-          slug: normalizeSlug(input.slug || input.name || 'new-site'),
-          isActive: false,
-        },
-      });
-      await duplicateSiteContent(templateId, record.id);
-      return mapSite(record);
+      try {
+        const templateId = input.templateSiteId && await client.site.findUnique({ where: { id: input.templateSiteId } }) ? input.templateSiteId : (await getActiveSiteRecord()).id;
+        console.log(`[createSite] Creating site with template ${templateId}`);
+        const record = await client.site.create({
+          data: {
+            name: input.name.trim() || '新站点',
+            slug: normalizeSlug(input.slug || input.name || 'new-site'),
+            isActive: false,
+          },
+        });
+        console.log(`[createSite] Site created with id ${record.id}, duplicating content from template ${templateId}`);
+        await duplicateSiteContent(templateId, record.id);
+        console.log(`[createSite] Content duplication completed successfully`);
+        return mapSite(record);
+      } catch (error) {
+        console.error('[createSite] Error:', error);
+        throw error;
+      }
     },
     async updateSite(id: number, input: SiteUpdateInput) {
       const record = await client.site.update({ where: { id }, data: { name: input.name.trim(), slug: normalizeSlug(input.slug) } }).catch(() => null);
@@ -514,6 +548,22 @@ export async function createPrismaStore(): Promise<ContentStore> {
       return mapSettings(record);
     },
     async updateSiteSettings(input: SiteSettingsUpdateInput, siteId?: number) {
+      // 自动同步价格字段：如果 productVariants 有变化，更新 salePrice 为第一个规格的价格
+      let finalSalePrice = input.salePrice;
+      let finalOriginalPrice = input.originalPrice;
+      
+      if (input.productVariants && input.productVariants.length > 0) {
+        const firstVariant = input.productVariants[0];
+        if (firstVariant.price !== undefined) {
+          finalSalePrice = firstVariant.price;
+          console.log(`[updateSiteSettings] Auto-syncing salePrice from productVariants[0].price: ${firstVariant.price}`);
+        }
+        if (firstVariant.originalPrice !== undefined) {
+          finalOriginalPrice = firstVariant.originalPrice;
+          console.log(`[updateSiteSettings] Auto-syncing originalPrice from productVariants[0].originalPrice: ${firstVariant.originalPrice}`);
+        }
+      }
+      
       const record = await client.siteSettings.update({
         where: { siteId: await resolveSiteId(siteId) },
         data: {
@@ -527,8 +577,8 @@ export async function createPrismaStore(): Promise<ContentStore> {
           shippingNote: input.shippingNote,
           reminder: input.reminder,
           shippingTime: input.shippingTime,
-          salePrice: input.salePrice,
-          originalPrice: input.originalPrice,
+          salePrice: finalSalePrice,
+          originalPrice: finalOriginalPrice,
           soldText: input.soldText,
           marqueeText: input.marqueeText,
           reviewTags: toJsonValue(input.reviewTags),
