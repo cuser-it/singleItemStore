@@ -31,6 +31,7 @@ export type SiteSettings = {
   heroImageCount: number;
   paymentSuccessMessage: string;
   customerServiceUrl: string;
+  customerServiceQrCode?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -242,6 +243,7 @@ export const defaultSiteSettings: SiteSettings = {
   heroImageCount: 5,
   paymentSuccessMessage: '添加客服领取服用说明',
   customerServiceUrl: '',
+  customerServiceQrCode: undefined,
   createdAt: now,
   updatedAt: now,
 };

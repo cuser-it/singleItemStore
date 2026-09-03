@@ -275,6 +275,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       res.json({
         message: settings.paymentSuccessMessage || '添加客服领取服用说明',
         customerServiceUrl: settings.customerServiceUrl || '',
+        customerServiceQrCode: settings.customerServiceQrCode,
       });
     } catch (error) {
       res.status(500).json({ message: 'failed to fetch config' });
