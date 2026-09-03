@@ -251,6 +251,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
 
   app.post('/api/public/orders', async (req, res) => {
+    console.log('[DEBUG] POST /api/public/orders received, body:', req.body);
     try {
       res.status(201).json(await orderService.createOrder(buildOrderInput(req.body)));
     } catch (error) {
