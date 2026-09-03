@@ -12,7 +12,7 @@ let baseUrl = '';
 let authCookie = '';
 
 async function startServer() {
-  const app = await createApp({ store: createMemoryStore(), uploadDir });
+  const app = await createApp({ store: createMemoryStore(), uploadDir, adminPassword: 'admin123456' });
   const httpServer = app.listen(0);
   await new Promise<void>((resolve) => httpServer.once('listening', resolve));
   const address = httpServer.address();
@@ -277,6 +277,8 @@ describe('backend', () => {
     expect(first.data.order.totalAmount).toBe((Number(skus[0].price) * 2).toFixed(2));
     expect(first.data.order.paymentStatus).toBe('PAYING');
     expect(first.data.paymentUrl).toContain(first.data.order.orderNo);
+    expect(first.data.paymentUrl).not.toContain('sitename');
+    expect(first.data.params).not.toHaveProperty('sitename');
 
     const second = await postJson<{ order: { id: number; orderNo: string } }>('/api/public/orders', payload, '');
     expect(second.data.order.id).toBe(first.data.order.id);

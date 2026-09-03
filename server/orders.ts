@@ -937,7 +937,7 @@ export class OrderService {
   }
 
   private buildPayment(order: Order, settings = this.paymentSettings) {
-    const params = { pid: settings.merchantId, type: order.paymentChannel, out_trade_no: order.orderNo, notify_url: settings.notifyUrl, return_url: `${settings.returnUrl}?orderNo=${encodeURIComponent(order.orderNo)}`, name: order.skuName, money: order.totalAmount, sitename: 'single-item-store' };
+    const params = { pid: settings.merchantId, type: order.paymentChannel, out_trade_no: order.orderNo, notify_url: settings.notifyUrl, return_url: `${settings.returnUrl}?orderNo=${encodeURIComponent(order.orderNo)}`, name: order.skuName, money: order.totalAmount };
     const signed = { ...params, sign: signParams(params, settings.merchantSecret ?? ''), sign_type: 'MD5' };
     const query = new URLSearchParams(signed).toString();
     return { order, paymentUrl: `${settings.gatewayUrl}?${query}`, params: signed };
