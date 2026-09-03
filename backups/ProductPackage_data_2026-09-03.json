@@ -1,0 +1,38 @@
+[
+  {
+    "id": "cmtizegbk0001zrh1i4tmg1i4",
+    "code": "starter",
+    "templateId": "cmtizefyk0000zrh17jmip4oa",
+    "name": "1盒 起步装-初拾勇气",
+    "price": "99",
+    "marketPrice": "299",
+    "sortOrder": 0,
+    "isEnabled": true,
+    "createdAt": "2026-09-01T18:09:09.921Z",
+    "updatedAt": "2026-09-01T18:09:09.921Z"
+  },
+  {
+    "id": "cmtizegbl0002zrh1nfbyty4y",
+    "code": "steady",
+    "templateId": "cmtizefyk0000zrh17jmip4oa",
+    "name": "3盒 稳定装-持续输出",
+    "price": "268",
+    "marketPrice": "699",
+    "sortOrder": 1,
+    "isEnabled": true,
+    "createdAt": "2026-09-01T18:09:09.921Z",
+    "updatedAt": "2026-09-01T18:09:09.921Z"
+  },
+  {
+    "id": "cmtizegbl0003zrh19schf9ml",
+    "code": "course",
+    "templateId": "cmtizefyk0000zrh17jmip4oa",
+    "name": "5盒 疗程装-永久战斗",
+    "price": "428",
+    "marketPrice": "1099",
+    "sortOrder": 2,
+    "isEnabled": true,
+    "createdAt": "2026-09-01T18:09:09.921Z",
+    "updatedAt": "2026-09-01T18:09:09.921Z"
+  }
+]

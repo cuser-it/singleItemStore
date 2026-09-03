@@ -1,0 +1,90 @@
+{
+  "database": "fsd",
+  "timestamp": "2026-09-03T04:36:59.986Z",
+  "tables": [
+    {
+      "name": "Admin",
+      "rowCount": 1
+    },
+    {
+      "name": "AdminActionLog",
+      "rowCount": 0
+    },
+    {
+      "name": "AdminLoginLog",
+      "rowCount": 7
+    },
+    {
+      "name": "CustomerChannel",
+      "rowCount": 1
+    },
+    {
+      "name": "FloatingPurchase",
+      "rowCount": 17
+    },
+    {
+      "name": "MediaAsset",
+      "rowCount": 51
+    },
+    {
+      "name": "OperationLog",
+      "rowCount": 6
+    },
+    {
+      "name": "Order",
+      "rowCount": 2
+    },
+    {
+      "name": "OrderLegacy",
+      "rowCount": 1
+    },
+    {
+      "name": "OrderSnapshot",
+      "rowCount": 1
+    },
+    {
+      "name": "Payment",
+      "rowCount": 1
+    },
+    {
+      "name": "PaymentNotifyLog",
+      "rowCount": 0
+    },
+    {
+      "name": "PaymentSettings",
+      "rowCount": 1
+    },
+    {
+      "name": "ProductAsset",
+      "rowCount": 0
+    },
+    {
+      "name": "ProductPackage",
+      "rowCount": 3
+    },
+    {
+      "name": "ProductReview",
+      "rowCount": 0
+    },
+    {
+      "name": "ProductSku",
+      "rowCount": 4
+    },
+    {
+      "name": "ProductTemplate",
+      "rowCount": 1
+    },
+    {
+      "name": "Review",
+      "rowCount": 20
+    },
+    {
+      "name": "Site",
+      "rowCount": 1
+    },
+    {
+      "name": "SiteSettings",
+      "rowCount": 4
+    }
+  ]
+}
