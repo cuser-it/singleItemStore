@@ -100,13 +100,16 @@ enum PaymentStatus {
   PAID
   PAYMENT_FAILED
   REFUNDED
+
+  @@map("StorePaymentStatus")
 }
 
 enum FulfillmentStatus {
   WAIT_SHIP
   SHIPPED
-}
 
+  @@map("StoreFulfillmentStatus")
+}
 model ProductSku {
   id            Int      @id @default(autoincrement())
   siteId        Int

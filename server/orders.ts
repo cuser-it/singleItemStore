@@ -306,6 +306,28 @@ export class OrderService {
       );
     `);
     await prismaClient.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'Order'
+            AND column_name = 'id'
+            AND data_type = 'text'
+        ) THEN
+          ALTER TABLE "Order" RENAME TO "OrderLegacy";
+        END IF;
+      END $$;
+    `);
+    await prismaClient.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        CREATE TYPE "StorePaymentStatus" AS ENUM ('UNPAID', 'PAYING', 'PAID', 'PAYMENT_FAILED', 'REFUNDED');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+    await prismaClient.$executeRawUnsafe(`DO $$ BEGIN CREATE TYPE "StoreFulfillmentStatus" AS ENUM ('WAIT_SHIP', 'SHIPPED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+    await prismaClient.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "Order" (
         "id" SERIAL PRIMARY KEY,
         "orderNo" TEXT NOT NULL UNIQUE,
@@ -321,10 +343,10 @@ export class OrderService {
         "phone" TEXT NOT NULL,
         "address" TEXT NOT NULL,
         "paymentChannel" TEXT NOT NULL,
-        "paymentStatus" TEXT NOT NULL DEFAULT 'UNPAID',
+        "paymentStatus" "StorePaymentStatus" NOT NULL DEFAULT 'UNPAID',
         "thirdPartyTradeNo" TEXT,
         "paidAt" TIMESTAMP(3),
-        "fulfillmentStatus" TEXT NOT NULL DEFAULT 'WAIT_SHIP',
+        "fulfillmentStatus" "StoreFulfillmentStatus" NOT NULL DEFAULT 'WAIT_SHIP',
         "logisticsCompany" TEXT,
         "logisticsNo" TEXT,
         "shippedAt" TIMESTAMP(3),
