@@ -32,6 +32,7 @@ export type SiteSettings = {
   reviewTags: string[];
   productVariants: ProductVariant[];
   heroImageCount: number;
+  paymentSuccessMessage: string;
   createdAt: string;
   updatedAt: string;
 };

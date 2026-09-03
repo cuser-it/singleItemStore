@@ -246,3 +246,7 @@ export async function exportOrders(params: URLSearchParams) {
   if (!response.ok) throw new Error(await response.text());
   return response.blob();
 }
+
+export async function fetchPaymentSuccessConfig() {
+  return requestJson<{ message: string; qrCodeUrl: string }>('/api/public/payment-success-config');
+}

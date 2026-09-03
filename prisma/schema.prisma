@@ -45,6 +45,7 @@ model SiteSettings {
   reviewTags         Json
   productVariants    Json
   heroImageCount     Int
+  paymentSuccessMessage String @default("添加客服领取服用说明")
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

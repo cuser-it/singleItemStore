@@ -272,6 +272,18 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
+  app.get('/api/public/payment-success-config', async (_req, res) => {
+    try {
+      const settings = await store.getActiveSiteSettings();
+      res.json({
+        message: settings.paymentSuccessMessage || '添加客服领取服用说明',
+        qrCodeUrl: settings.qrCodeUrl || '',
+      });
+    } catch (error) {
+      res.status(500).json({ message: 'failed to fetch config' });
+    }
+  });
+
   app.get('/api/payment/epay/notify', async (req, res) => {
     const result = await orderService.handleNotify(req.query as Record<string, string>);
     res.status(result.ok ? 200 : 400).send(result.ok ? 'success' : 'fail');
