@@ -179,7 +179,7 @@ function mapPaymentSettingsRecord(record: {
   return {
     gatewayUrl: record.gatewayUrl,
     merchantId: record.merchantId,
-    enabledChannels: Array.isArray(record.enabledChannels) ? record.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat') : ['alipay', 'wechat'],
+    enabledChannels: Array.isArray(record.enabledChannels) ? record.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay') : ['alipay', 'wxpay'],
     notifyUrl: record.notifyUrl,
     returnUrl: record.returnUrl,
     secretMasked: maskSecret(secret),
@@ -256,7 +256,7 @@ export class OrderService {
     gatewayUrl: process.env.EPAY_GATEWAY_URL ?? 'https://pay.example.test/submit.php',
     merchantId: process.env.EPAY_MERCHANT_ID ?? 'demo',
     merchantSecret: process.env.EPAY_MERCHANT_SECRET ?? 'demo-secret',
-    enabledChannels: ['alipay', 'wechat'],
+    enabledChannels: ['alipay', 'wxpay'],
     notifyUrl: process.env.EPAY_NOTIFY_URL ?? '/api/payment/epay/notify',
     returnUrl: process.env.EPAY_RETURN_URL ?? '/payment/return',
     updatedAt: nowIso(),
@@ -820,7 +820,7 @@ export class OrderService {
         gatewayUrl: input.gatewayUrl.trim(),
         merchantId: input.merchantId.trim(),
         merchantSecret: input.merchantSecret?.trim() || this.paymentSettings.merchantSecret,
-        enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat'),
+        enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay'),
         notifyUrl: input.notifyUrl.trim(),
         returnUrl: input.returnUrl.trim(),
         updatedAt: nowIso(),
@@ -836,7 +836,7 @@ export class OrderService {
         gatewayUrl: input.gatewayUrl.trim(),
         merchantId: input.merchantId.trim(),
         encryptedSecret: input.merchantSecret ? encodeSecret(input.merchantSecret.trim()) : current?.encryptedSecret ?? encodeSecret(this.paymentSettings.merchantSecret ?? ''),
-        enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat'),
+        enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay'),
         notifyUrl: input.notifyUrl.trim(),
         returnUrl: input.returnUrl.trim(),
       },
@@ -845,7 +845,7 @@ export class OrderService {
         gatewayUrl: input.gatewayUrl.trim(),
         merchantId: input.merchantId.trim(),
         encryptedSecret: encodeSecret(input.merchantSecret ?? this.paymentSettings.merchantSecret ?? ''),
-        enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat'),
+        enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay'),
         notifyUrl: input.notifyUrl.trim(),
         returnUrl: input.returnUrl.trim(),
       },
@@ -895,7 +895,7 @@ export class OrderService {
         gatewayUrl: existing.gatewayUrl,
         merchantId: existing.merchantId,
         merchantSecret: decodeSecret(existing.encryptedSecret),
-        enabledChannels: Array.isArray(existing.enabledChannels) ? existing.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat') : ['alipay', 'wechat'],
+        enabledChannels: Array.isArray(existing.enabledChannels) ? existing.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay') : ['alipay', 'wxpay'],
         notifyUrl: existing.notifyUrl,
         returnUrl: existing.returnUrl,
         updatedAt: existing.updatedAt.toISOString(),
@@ -916,7 +916,7 @@ export class OrderService {
       gatewayUrl: created.gatewayUrl,
       merchantId: created.merchantId,
       merchantSecret: decodeSecret(created.encryptedSecret),
-      enabledChannels: Array.isArray(created.enabledChannels) ? created.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wechat') : ['alipay', 'wechat'],
+      enabledChannels: Array.isArray(created.enabledChannels) ? created.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay') : ['alipay', 'wxpay'],
       notifyUrl: created.notifyUrl,
       returnUrl: created.returnUrl,
       updatedAt: created.updatedAt.toISOString(),
@@ -932,7 +932,7 @@ export class OrderService {
     if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > maxQuantity) throw new Error('invalid quantity');
     if (!phonePattern.test(input.phone.trim())) throw new Error('invalid phone');
     if (!input.recipientName.trim() || !input.address.trim()) throw new Error('recipient required');
-    if (!['alipay', 'wechat'].includes(input.paymentChannel)) throw new Error('invalid payment channel');
+    if (!['alipay', 'wxpay'].includes(input.paymentChannel)) throw new Error('invalid payment channel');
     if (!enabledChannels.includes(input.paymentChannel)) throw new Error('payment channel disabled');
   }
 

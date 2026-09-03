@@ -189,7 +189,7 @@ function PublicApp() {
   const [slide, setSlide] = useState(0);
   const [selectedSkuId, setSelectedSkuId] = useState('single');
   const [quantity, setQuantity] = useState(1);
-  const [checkoutPayment, setCheckoutPayment] = useState<'wechat' | 'alipay'>('wechat');
+  const [checkoutPayment, setCheckoutPayment] = useState<'wxpay' | 'alipay'>('wxpay');
   const [reviewOpen, setReviewOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [toast, setToast] = useState('');
@@ -538,7 +538,7 @@ function PublicApp() {
           <section className="checkout-section">
             <div className="checkout-section-title">支付方式</div>
             <div className="checkout-payments">
-              <button className={checkoutPayment === 'wechat' ? 'checkout-pay active' : 'checkout-pay'} type="button" onClick={() => setCheckoutPayment('wechat')}>微信支付</button>
+              <button className={checkoutPayment === 'wxpay' ? 'checkout-pay active' : 'checkout-pay'} type="button" onClick={() => setCheckoutPayment('wxpay')}>微信支付</button>
               <button className={checkoutPayment === 'alipay' ? 'checkout-pay active' : 'checkout-pay'} type="button" onClick={() => setCheckoutPayment('alipay')}>支付宝支付</button>
             </div>
           </section>

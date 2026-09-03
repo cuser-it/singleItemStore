@@ -28,7 +28,7 @@ export type ProductSkuInput = {
 
 export type PaymentStatus = 'UNPAID' | 'PAYING' | 'PAID' | 'PAYMENT_FAILED' | 'REFUNDED';
 export type FulfillmentStatus = 'WAIT_SHIP' | 'SHIPPED';
-export type PaymentChannel = 'alipay' | 'wechat';
+export type PaymentChannel = 'alipay' | 'wxpay';
 
 export type Order = {
   id: number;

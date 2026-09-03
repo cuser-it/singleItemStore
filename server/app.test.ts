@@ -296,7 +296,7 @@ describe('backend', () => {
   it('enforces shipping, refund marking, soft delete conditions, and export columns', async () => {
     await login();
     const skus = await fetch(`${baseUrl}/api/admin/skus`, { headers: { cookie: authCookie } }).then((response) => response.json()) as Array<{ id: number }>;
-    const created = await postJson<{ order: { id: number } }>('/api/public/orders', { skuId: skus[0].id, quantity: 1, recipientName: '运营用户', phone: '13900139000', address: '北京市测试路 2 号', paymentChannel: 'wechat' }, '');
+    const created = await postJson<{ order: { id: number } }>('/api/public/orders', { skuId: skus[0].id, quantity: 1, recipientName: '运营用户', phone: '13900139000', address: '北京市测试路 2 号', paymentChannel: 'wxpay' }, '');
 
     const badShip = await postJson(`/api/admin/orders/${created.data.order.id}/ship`, { logisticsCompany: '', logisticsNo: '' });
     expect(badShip.response.status).toBe(400);

@@ -164,7 +164,7 @@ function buildOrderInput(body: any) {
     recipientName: String(body.recipientName ?? '').trim(),
     phone: String(body.phone ?? '').trim(),
     address: String(body.address ?? '').trim(),
-    paymentChannel: body.paymentChannel === 'wechat' ? 'wechat' as const : 'alipay' as const,
+    paymentChannel: body.paymentChannel === 'wxpay' ? 'wxpay' as const : 'alipay' as const,
     idempotencyKey: body.idempotencyKey ? String(body.idempotencyKey) : undefined,
   };
 }

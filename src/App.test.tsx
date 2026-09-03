@@ -69,7 +69,7 @@ beforeEach(() => {
     updatedAt: new Date().toISOString(),
   })));
   vi.mocked(fetchAdminOrders).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 });
-  vi.mocked(fetchPaymentSettings).mockResolvedValue({ gatewayUrl: 'https://pay.example.test/submit.php', merchantId: 'demo', enabledChannels: ['alipay', 'wechat'], notifyUrl: '/api/payment/epay/notify', returnUrl: '/payment/return', secretMasked: 'dem******ret', updatedAt: new Date().toISOString() });
+  vi.mocked(fetchPaymentSettings).mockResolvedValue({ gatewayUrl: 'https://pay.example.test/submit.php', merchantId: 'demo', enabledChannels: ['alipay', 'wxpay'], notifyUrl: '/api/payment/epay/notify', returnUrl: '/payment/return', secretMasked: 'dem******ret', updatedAt: new Date().toISOString() });
   vi.mocked(createSite).mockResolvedValue({ ...defaultBootstrap.site, id: 3, name: '华东商城', slug: 'east-store', isActive: false });
   vi.mocked(activateSite).mockResolvedValue({ ...defaultBootstrap.site, id: 2, name: '第二站点', slug: 'second-site', isActive: true });
   vi.mocked(uploadAsset).mockResolvedValue({ source: '/img/review-upload.jpg', resolvedUrl: '/img/review-upload.jpg' });
