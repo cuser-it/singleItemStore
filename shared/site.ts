@@ -33,6 +33,7 @@ export type SiteSettings = {
   productVariants: ProductVariant[];
   heroImageCount: number;
   paymentSuccessMessage: string;
+  customerServiceUrl: string;
   createdAt: string;
   updatedAt: string;
 };

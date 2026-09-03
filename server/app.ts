@@ -277,7 +277,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       const settings = await store.getActiveSiteSettings();
       res.json({
         message: settings.paymentSuccessMessage || '添加客服领取服用说明',
-        qrCodeUrl: settings.qrCodeUrl || '',
+        customerServiceUrl: settings.customerServiceUrl || '',
       });
     } catch (error) {
       res.status(500).json({ message: 'failed to fetch config' });
