@@ -25,29 +25,15 @@ export type SiteSettings = {
   shippingNote: string;
   reminder: string;
   shippingTime: string;
-  salePrice: number;
-  originalPrice: number;
   soldText: string;
   marqueeText: string;
   reviewTags: string[];
-  productVariants: ProductVariant[];
   heroImageCount: number;
   paymentSuccessMessage: string;
   customerServiceUrl: string;
   createdAt: string;
   updatedAt: string;
 };
-
-export type ProductVariant = {
-  id: string;
-  name: string;
-  subtitle: string;
-  price: number;
-  originalPrice: number;
-  saleLabel: string;
-  highlight?: string;
-};
-
 export type MediaAsset = {
   id: number;
   siteId: number;
@@ -250,17 +236,12 @@ export const defaultSiteSettings: SiteSettings = {
   shippingNote: '免费包邮',
   reminder: '正品保证，不仅全，而且更安全',
   shippingTime: '18:00 前下单，承诺当日发出',
-  salePrice: 99,
-  originalPrice: 299,
   soldText: '50000+已售',
   marqueeText: 'xxx购买',
   reviewTags: ['效果明显', '价格便宜', '发货快', '物流快', '服务好'],
-  productVariants: [
-    { id: 'single', name: '单盒体验装', subtitle: '先试用再决定', price: 99, originalPrice: 299, saleLabel: '券后价' },
-    { id: 'double', name: '2盒组合装', subtitle: '更适合持续使用', price: 178, originalPrice: 598, saleLabel: '组合价', highlight: '立减 20%' },
-    { id: 'family', name: '3盒家庭装', subtitle: '赠礼包装 + 优先发货', price: 258, originalPrice: 897, saleLabel: '限时价', highlight: '赠礼盒' },
-  ],
   heroImageCount: 5,
+  paymentSuccessMessage: '添加客服领取服用说明',
+  customerServiceUrl: '',
   createdAt: now,
   updatedAt: now,
 };

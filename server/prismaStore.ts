@@ -550,46 +550,6 @@ export async function createPrismaStore(): Promise<ContentStore> {
     async updateSiteSettings(input: SiteSettingsUpdateInput, siteId?: number) {
       const resolvedSiteId = await resolveSiteId(siteId);
       
-      // 自动同步价格字段：如果 productVariants 有变化，更新 salePrice 为第一个规格的价格
-      let finalSalePrice = input.salePrice;
-      let finalOriginalPrice = input.originalPrice;
-      
-      if (input.productVariants && input.productVariants.length > 0) {
-        const firstVariant = input.productVariants[0];
-        if (firstVariant.price !== undefined) {
-          finalSalePrice = firstVariant.price;
-          console.log(`[updateSiteSettings] Auto-syncing salePrice from productVariants[0].price: ${firstVariant.price}`);
-        }
-        if (firstVariant.originalPrice !== undefined) {
-          finalOriginalPrice = firstVariant.originalPrice;
-          console.log(`[updateSiteSettings] Auto-syncing originalPrice from productVariants[0].originalPrice: ${firstVariant.originalPrice}`);
-        }
-        
-        // 同步价格到 ProductSku 表
-        for (const variant of input.productVariants) {
-          if (variant.id && variant.price !== undefined) {
-            // 通过 skuCode (variant.id) 查找并更新对应的 ProductSku
-            const updateData: any = {
-              price: variant.price,
-              updatedAt: new Date(),
-            };
-            
-            if (variant.name !== undefined) updateData.name = variant.name;
-            if (variant.subtitle !== undefined) updateData.subtitle = variant.subtitle;
-            if (variant.originalPrice !== undefined) updateData.originalPrice = variant.originalPrice;
-            if (variant.saleLabel !== undefined) updateData.saleLabel = variant.saleLabel;
-            if (variant.highlight !== undefined) updateData.highlight = variant.highlight;
-            
-            const updateResult = await client.productSku.updateMany({
-              where: { siteId: resolvedSiteId, skuCode: variant.id },
-              data: updateData,
-            });
-            
-            console.log(`[updateSiteSettings] Synced ProductSku (skuCode=${variant.id}): ${updateResult.count} rows updated, price=${variant.price}`);
-          }
-        }
-      }
-      
       const record = await client.siteSettings.update({
         where: { siteId: resolvedSiteId },
         data: {
@@ -603,12 +563,9 @@ export async function createPrismaStore(): Promise<ContentStore> {
           shippingNote: input.shippingNote,
           reminder: input.reminder,
           shippingTime: input.shippingTime,
-          salePrice: finalSalePrice,
-          originalPrice: finalOriginalPrice,
           soldText: input.soldText,
           marqueeText: input.marqueeText,
           reviewTags: toJsonValue(input.reviewTags),
-          productVariants: toJsonValue(input.productVariants),
           heroImageCount: input.heroImageCount,
         },
       });

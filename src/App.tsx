@@ -44,7 +44,6 @@ import {
   type FloatingPurchase,
   type MediaAsset,
   type MediaSection,
-  type ProductVariant,
   type PublicBootstrap,
   type Review,
   type Site,
@@ -138,7 +137,7 @@ function Stepper({ value, onDecrease, onIncrease, className = 'stepper' }: { val
   );
 }
 
-function PriceBanner({ sku }: { sku: ProductVariant }) {
+function PriceBanner({ sku }: { sku: { id: string; name: string; subtitle: string; price: number; originalPrice: number; saleLabel: string; highlight?: string } }) {
   return (
     <section className="price-bar" aria-label="价格横幅">
       <svg xmlns="http://www.w3.org/2000/svg" width="600" height="104" viewBox="0 0 600 104" role="img" aria-labelledby="price-title price-desc">
@@ -206,7 +205,7 @@ function PublicApp() {
       .then((data) => {
         if (!active) return;
         setBootstrap(data);
-        setSelectedSkuId(data.skus?.[0]?.skuCode ?? data.settings.productVariants[0]?.id ?? 'single');
+        setSelectedSkuId(data.skus?.[0]?.skuCode ?? 'single');
         setLoadError('');
       })
       .catch(() => {
@@ -261,21 +260,7 @@ function PublicApp() {
   }
 
   const settings = bootstrap.settings;
-  const liveSkus = bootstrap.skus ?? settings.productVariants.map((variant, index) => ({
-    id: index + 1,
-    siteId: bootstrap.site.id,
-    skuCode: variant.id,
-    name: variant.name,
-    subtitle: variant.subtitle,
-    price: variant.price.toFixed(2),
-    originalPrice: variant.originalPrice.toFixed(2),
-    saleLabel: variant.saleLabel,
-    highlight: variant.highlight,
-    enabled: true,
-    sortOrder: index + 1,
-    createdAt: variant.id,
-    updatedAt: variant.id,
-  }));
+  const liveSkus = bootstrap.skus ?? [];
   const selectedSkuRecord = liveSkus.find((sku) => sku.skuCode === selectedSkuId) ?? liveSkus[0];
   const selectedSku = selectedSkuRecord ? {
     id: selectedSkuRecord.skuCode,
@@ -289,8 +274,8 @@ function PublicApp() {
     id: 'single',
     name: settings.title || settings.shopName,
     subtitle: settings.subtitle,
-    price: settings.salePrice,
-    originalPrice: settings.originalPrice,
+    price: 99,
+    originalPrice: 299,
     saleLabel: '券后价',
   };
   const total = selectedSku.price * quantity;
@@ -1036,7 +1021,7 @@ function AdminApp() {
   if (!authed) return <div className="admin-login-page"><Card className="admin-login-card"><Text type="secondary">多站点后台</Text><Title level={2}>后台登录</Title><Text type="secondary">后台仅支持桌面端访问，请使用电脑浏览器继续。</Text><form onSubmit={handleLogin}><label>密码<Input.Password value={password} onChange={(event) => setPassword(event.target.value)} placeholder="请输入后台密码" /></label><Button htmlType="submit" type="primary" block>登录</Button></form></Card></div>;
 
   const settingsInitialValues = settings ? { ...settings, guarantee: settings.guarantee.join('\n'), reviewTags: settings.reviewTags.join('\n'), paymentSuccessMessage: settings.paymentSuccessMessage || '添加客服领取服用说明', customerServiceUrl: settings.customerServiceUrl || '' } : undefined;
-  const settingsForm = settings ? <Form layout="vertical" initialValues={settingsInitialValues} onFinish={handleSettingsSave}><Row gutter={20}><Col span={24}><Form.Item name="shopName" label="店铺名"><Input /></Form.Item></Col><Col span={12}><Form.Item name="title" label="标题"><Input /></Form.Item></Col><Col span={12}><Form.Item name="subtitle" label="副标题"><Input /></Form.Item></Col><Col span={24}><Form.Item name="productDescription" label="描述"><Input.TextArea rows={3} /></Form.Item></Col><Col span={24}><Form.Item name="marqueeText" label="滚动文案"><Input /></Form.Item></Col><Col span={12}><Form.Item name="salePrice" label="价格 (¥)"><Input type="number" /></Form.Item></Col><Col span={12}><Form.Item name="originalPrice" label="原价 (¥)"><Input type="number" /></Form.Item></Col><Col span={12}><Form.Item name="shippingNote" label="邮费说明"><Input /></Form.Item></Col><Col span={12}><Form.Item name="shippingTime" label="发货时间"><Input /></Form.Item></Col><Col span={24}><Form.Item name="guarantee" label="保障文案，每行一个"><Input.TextArea rows={3} /></Form.Item></Col><Col span={24}><Form.Item name="reviewTags" label="评价标签，每行一个"><Input.TextArea rows={2} /></Form.Item></Col><Col span={24}><Form.Item name="reminder" label="提示语"><Input /></Form.Item></Col><Col span={24}><Form.Item name="paymentSuccessMessage" label="支付成功引导文案"><Input placeholder="添加客服领取服用说明" /></Form.Item></Col><Col span={24}><Form.Item name="customerServiceUrl" label="客服微信链接" extra="支持微信直链（weixin://）或图片URL，图片将转为base64，直链将生成二维码"><Input placeholder="weixin://dl/business/?t=xxxxx 或 https://example.com/qr.jpg" /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">保存配置</Button></Space></Form> : null;
+  const settingsForm = settings ? <Form layout="vertical" initialValues={settingsInitialValues} onFinish={handleSettingsSave}><Alert type="info" message="价格管理已迁移至 SKU 管理页面" description="请在 SKU 管理中修改商品价格" showIcon style={{ marginBottom: 16 }} /><Row gutter={20}><Col span={24}><Form.Item name="shopName" label="店铺名"><Input /></Form.Item></Col><Col span={12}><Form.Item name="title" label="标题"><Input /></Form.Item></Col><Col span={12}><Form.Item name="subtitle" label="副标题"><Input /></Form.Item></Col><Col span={24}><Form.Item name="productDescription" label="描述"><Input.TextArea rows={3} /></Form.Item></Col><Col span={24}><Form.Item name="marqueeText" label="滚动文案"><Input /></Form.Item></Col><Col span={12}><Form.Item name="shippingNote" label="邮费说明"><Input /></Form.Item></Col><Col span={12}><Form.Item name="shippingTime" label="发货时间"><Input /></Form.Item></Col><Col span={24}><Form.Item name="guarantee" label="保障文案，每行一个"><Input.TextArea rows={3} /></Form.Item></Col><Col span={24}><Form.Item name="reviewTags" label="评价标签，每行一个"><Input.TextArea rows={2} /></Form.Item></Col><Col span={24}><Form.Item name="reminder" label="提示语"><Input /></Form.Item></Col><Col span={24}><Form.Item name="paymentSuccessMessage" label="支付成功引导文案"><Input placeholder="添加客服领取服用说明" /></Form.Item></Col><Col span={24}><Form.Item name="customerServiceUrl" label="客服微信链接" extra="支持微信直链（weixin://）或图片URL，图片将转为base64，直链将生成二维码"><Input placeholder="weixin://dl/business/?t=xxxxx 或 https://example.com/qr.jpg" /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">保存配置</Button></Space></Form> : null;
   const siteForm = <Form layout="vertical" onFinish={handleSiteSave}><Form.Item label="站点名称" required><Input value={siteDraft.name} onChange={(event) => setSiteDraft({ ...siteDraft, name: event.target.value })} placeholder="例如 华东商城" /></Form.Item><Form.Item label="站点标识" required><Input value={siteDraft.slug} onChange={(event) => setSiteDraft({ ...siteDraft, slug: event.target.value })} placeholder="例如 east-store" /></Form.Item>{siteDraft.id ? null : <Form.Item label="复制模板"><Select value={siteDraft.templateSiteId} onChange={(templateSiteId) => setSiteDraft({ ...siteDraft, templateSiteId })} options={(bootstrap?.sites ?? []).map((site) => ({ value: site.id, label: site.name }))} /></Form.Item>}<Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{siteDraft.id ? '保存站点' : '创建站点'}</Button></Space></Form>;
   const mediaForm = <Form layout="vertical" onFinish={handleMediaSave}><Row gutter={20}><Col span={12}><Form.Item label="区域"><Select value={mediaDraft.section} onChange={(section) => setMediaDraft({ ...mediaDraft, section })} options={[{ value: 'hero', label: '首页轮播' }, { value: 'detail', label: '详情图片' }]} /></Form.Item></Col><Col span={12}><Form.Item label="来源类型"><Select value={mediaDraft.sourceType} onChange={(sourceType) => setMediaDraft({ ...mediaDraft, sourceType })} options={[{ value: 'url', label: 'URL' }, { value: 'upload', label: '上传' }]} /></Form.Item></Col><Col span={24}><Form.Item label="图片地址"><Input value={mediaDraft.source} onChange={(event) => setMediaDraft({ ...mediaDraft, source: event.target.value })} placeholder="https://... 或 /img/..." /></Form.Item></Col><Col span={24}><Form.Item label="上传文件"><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1}><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item></Col><Col span={12}><Form.Item label="替代文本"><Input value={mediaDraft.alt} onChange={(event) => setMediaDraft({ ...mediaDraft, alt: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="排序"><Input type="number" value={mediaDraft.sortOrder} onChange={(event) => setMediaDraft({ ...mediaDraft, sortOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={24}><Space><Switch checked={mediaDraft.enabled} onChange={(enabled) => setMediaDraft({ ...mediaDraft, enabled })} />启用</Space></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{mediaDraft.id ? '保存修改' : '新增图片'}</Button></Space></Form>;
   const reviewForm = <Form layout="vertical" onFinish={handleReviewSave}><Form.Item label="用户名"><Input value={reviewDraft.name} onChange={(event) => setReviewDraft({ ...reviewDraft, name: event.target.value })} /></Form.Item><Form.Item label="内容"><Input.TextArea rows={4} value={reviewDraft.content} onChange={(event) => setReviewDraft({ ...reviewDraft, content: event.target.value })} /></Form.Item><Form.Item label="图片地址，每行一个"><Input.TextArea rows={3} value={reviewDraft.images} onChange={(event) => setReviewDraft({ ...reviewDraft, images: event.target.value })} /></Form.Item><Form.Item label="上传评价图片"><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1}><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item><Row gutter={20}><Col span={12}><Form.Item label="排序"><Input type="number" value={reviewDraft.homeOrder} onChange={(event) => setReviewDraft({ ...reviewDraft, homeOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={12}><Form.Item label="首页展示"><Switch checked={reviewDraft.featuredOnHome} onChange={(featuredOnHome) => setReviewDraft({ ...reviewDraft, featuredOnHome })} /></Form.Item></Col><Col span={12}><Form.Item label="启用"><Switch checked={reviewDraft.enabled} onChange={(enabled) => setReviewDraft({ ...reviewDraft, enabled })} /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{reviewDraft.id ? '保存修改' : '新增评价'}</Button></Space></Form>;
@@ -1117,7 +1102,7 @@ function AdminApp() {
           <Card hoverable onClick={openSettings}>
             <Descriptions column={1} title="站点配置">
               <Descriptions.Item label="店铺">{settings?.shopName}</Descriptions.Item>
-              <Descriptions.Item label="当前售价">¥{settings?.salePrice}</Descriptions.Item>
+              <Descriptions.Item label="当前售价">¥{bootstrap?.skus?.find(s => s.enabled)?.price ?? '-'}</Descriptions.Item>
             </Descriptions>
           </Card>
         </Col>
@@ -1208,8 +1193,6 @@ function AdminApp() {
           <Descriptions.Item label="站点名称">{bootstrap?.site.name}</Descriptions.Item>
           <Descriptions.Item label="站点标识">{bootstrap?.site.slug}</Descriptions.Item>
           <Descriptions.Item label="店铺名">{settings?.shopName}</Descriptions.Item>
-          <Descriptions.Item label="售价">¥{settings?.salePrice}</Descriptions.Item>
-          <Descriptions.Item label="原价">¥{settings?.originalPrice}</Descriptions.Item>
           <Descriptions.Item label="发货时间">{settings?.shippingTime}</Descriptions.Item>
         </Descriptions>
       </Card>

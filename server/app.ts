@@ -115,12 +115,9 @@ function buildSettingsInput(body: any): SiteSettingsUpdateInput {
     shippingNote: String(body.shippingNote ?? defaultBootstrap.settings.shippingNote).trim(),
     reminder: String(body.reminder ?? defaultBootstrap.settings.reminder).trim(),
     shippingTime: String(body.shippingTime ?? defaultBootstrap.settings.shippingTime).trim(),
-    salePrice: toNumber(body.salePrice, defaultBootstrap.settings.salePrice),
-    originalPrice: toNumber(body.originalPrice, defaultBootstrap.settings.originalPrice),
     soldText: String(body.soldText ?? defaultBootstrap.settings.soldText).trim(),
     marqueeText: String(body.marqueeText ?? defaultBootstrap.settings.marqueeText).trim(),
     reviewTags: toStringArray(body.reviewTags, defaultBootstrap.settings.reviewTags),
-    productVariants: Array.isArray(body.productVariants) ? body.productVariants : defaultBootstrap.settings.productVariants,
     heroImageCount: toNumber(body.heroImageCount, defaultBootstrap.settings.heroImageCount),
   };
 }

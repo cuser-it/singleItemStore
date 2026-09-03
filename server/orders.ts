@@ -516,43 +516,6 @@ export class OrderService {
     });
     if (!updated) return null;
     
-    // 同步更新 SiteSettings.productVariants
-    try {
-      const settings = await prismaClient.siteSettings.findUnique({ where: { siteId: updated.siteId } });
-      if (settings && settings.productVariants) {
-        const variants = settings.productVariants as any[];
-        const variantIndex = variants.findIndex((v: any) => v.id === updated.skuCode);
-        if (variantIndex >= 0) {
-          variants[variantIndex] = {
-            ...variants[variantIndex],
-            name: updated.name,
-            subtitle: updated.subtitle,
-            price: updated.price,
-            originalPrice: updated.originalPrice,
-            saleLabel: updated.saleLabel,
-            highlight: updated.highlight ?? variants[variantIndex].highlight,
-          };
-          
-          // 如果是第一个 variant，同步更新 salePrice 和 originalPrice
-          const updateData: any = { productVariants: variants };
-          if (variantIndex === 0) {
-            updateData.salePrice = updated.price;
-            updateData.originalPrice = updated.originalPrice;
-          }
-          
-          await prismaClient.siteSettings.update({
-            where: { siteId: updated.siteId },
-            data: updateData,
-          });
-          
-          console.log(`[updateSku] Synced to SiteSettings.productVariants (skuCode=${updated.skuCode}, price=${updated.price})`);
-        }
-      }
-    } catch (err) {
-      console.error('[updateSku] Failed to sync to SiteSettings:', err);
-      // 不影响主流程，继续返回结果
-    }
-    
     this.log('sku_updated', `SKU ${updated.skuCode} updated`, actor, undefined, { skuId: id });
     return mapSkuRecord(updated);
   }

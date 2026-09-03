@@ -38,12 +38,9 @@ model SiteSettings {
   shippingNote       String
   reminder           String
   shippingTime       String
-  salePrice          Float
-  originalPrice      Float
   soldText           String
   marqueeText        String
   reviewTags         Json
-  productVariants    Json
   heroImageCount     Int
   paymentSuccessMessage String @default("添加客服领取服用说明")
   customerServiceUrl String @default("")
