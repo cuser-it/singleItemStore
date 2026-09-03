@@ -435,15 +435,15 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  app.get('/api/admin/payment-settings', (req, res) => {
+  app.get('/api/admin/payment-settings', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.json(orderService.getPaymentSettings());
+    res.json(await orderService.getPaymentSettings());
   });
 
-  app.put('/api/admin/payment-settings', (req, res) => {
+  app.put('/api/admin/payment-settings', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     try {
-      res.json(orderService.updatePaymentSettings(buildPaymentSettingsInput(req.body)));
+      res.json(await orderService.updatePaymentSettings(buildPaymentSettingsInput(req.body)));
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : 'payment settings failed' });
     }
