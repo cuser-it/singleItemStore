@@ -415,6 +415,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/api/admin/orders/export', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     try {
+      const columns = req.query.columns ? String(req.query.columns).split(',') : [];
       const csv = await orderService.exportOrders(buildOrderFilters(req.query), columns);
       res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=utf-8');
       res.header('Content-Disposition', 'attachment; filename="orders.xlsx"');

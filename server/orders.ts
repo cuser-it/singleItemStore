@@ -641,14 +641,14 @@ export class OrderService {
 
   async listOrders(filters: OrderFilters = {}): Promise<OrderListResult> {
     await this.ensureReady();
-    const site = await this.store.getActiveSite();
+    const siteId = filters.siteId ?? (await this.store.getActiveSite()).id;
     const page = Math.max(1, Number(filters.page ?? 1));
     const pageSize = Math.min(100, Math.max(1, Number(filters.pageSize ?? 20)));
     if (!this.persistent) {
-      const items = this.filterOrdersSync(filters, site.id);
+      const items = this.filterOrdersSync(filters, siteId);
       return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize };
     }
-    const where = this.buildOrderWhere(site.id, filters);
+    const where = this.buildOrderWhere(siteId, filters);
     const [total, rows] = await Promise.all([
       prismaClient.order.count({ where }),
       prismaClient.order.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * pageSize, take: pageSize }),
@@ -877,7 +877,7 @@ export class OrderService {
     };
     const picked = columns.length ? columns : ['orderNo', 'recipientName', 'phone', 'address', 'skuName', 'quantity', 'totalAmount', 'paymentStatus', 'fulfillmentStatus', 'createdAt'];
     if (picked.some((column) => !allowed[column])) throw new Error('invalid export column');
-    const rows = this.persistent ? await this.listOrderRows(filters) : this.filterOrdersSync(filters, (await this.store.getActiveSite()).id);
+    const rows = this.persistent ? await this.listOrderRows(filters) : this.filterOrdersSync(filters, filters.siteId ?? (await this.store.getActiveSite()).id);
     const sheetRows = [picked.map((column) => allowed[column])].concat(rows.map((order) => picked.map((column) => escapeCell((order as any)[column]))));
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
@@ -981,8 +981,8 @@ export class OrderService {
   }
 
   private async listOrderRows(filters: OrderFilters = {}) {
-    const site = await this.store.getActiveSite();
-    const where = this.buildOrderWhere(site.id, filters);
+    const siteId = filters.siteId ?? (await this.store.getActiveSite()).id;
+    const where = this.buildOrderWhere(siteId, filters);
     const rows = await prismaClient.order.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
     return rows.map(mapOrderRecord);
   }

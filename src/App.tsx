@@ -25,6 +25,7 @@ import {
   Upload,
   Checkbox,
 } from 'antd';
+import { OrderExportModal } from './components/OrderExportModal';
 import type { ColumnsType } from 'antd/es/table';
 import {
   AppstoreOutlined,
@@ -735,6 +736,7 @@ function AdminApp() {
   const [fulfillmentStatusFilter, setFulfillmentStatusFilter] = useState('all');
   const [deletedStatusFilter, setDeletedStatusFilter] = useState('active');
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings | null>(null);
+  const [exportModalVisible, setExportModalVisible] = useState(false);
   const { Title, Text } = Typography;
   const { message, modal } = AntApp.useApp();
   const { Header, Sider, Content } = Layout;
@@ -1005,20 +1007,32 @@ function AdminApp() {
       message.error(error instanceof Error ? error.message : '删除失败');
     }
   };
-  const handleExportOrders = async () => {
+  const handleExportOrders = async (params: { startDate?: string; endDate?: string; columns: string[] }) => {
     try {
-      const params = buildOrderParams();
-      params.set('columns', 'orderNo,recipientName,phone,address,skuName,quantity,totalAmount,paymentStatus,fulfillmentStatus,logisticsCompany,logisticsNo,createdAt');
-      const blob = await exportOrders(params);
+      const urlParams = buildOrderParams();
+      
+      // 添加时间范围
+      if (params.startDate) {
+        urlParams.set('startAt', params.startDate);
+      }
+      if (params.endDate) {
+        urlParams.set('endAt', params.endDate);
+      }
+      
+      // 添加导出字段
+      if (params.columns.length > 0) {
+        urlParams.set('columns', params.columns.join(','));
+      }
+      
+      const blob = await exportOrders(urlParams);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'orders.xlsx';
+      link.download = `orders_${new Date().toISOString().slice(0, 10)}.xlsx`;
       link.click();
       URL.revokeObjectURL(url);
-      message.success('订单导出已生成');
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '导出失败');
+      throw error;
     }
   };
   const clearBatchSelections = () => {
@@ -1276,7 +1290,7 @@ function AdminApp() {
         </div>
         <Space>
           <Button onClick={() => void refresh()}>刷新</Button>
-          <Button type="primary" onClick={() => void handleExportOrders()}>导出 XLSX</Button>
+          <Button type="primary" onClick={() => setExportModalVisible(true)}>导出 XLSX</Button>
         </Space>
       </div>
       <Card className="admin-filter-card">
@@ -1439,7 +1453,62 @@ function AdminApp() {
   );
   const drawerTitle = drawer === 'settings' ? '编辑站点配置' : drawer === 'site' ? (siteDraft.id ? '编辑站点' : '新建站点') : drawer === 'media' ? '编辑图片资源' : drawer === 'review' ? '编辑评价' : drawer === 'sku' ? (skuDraft.id ? '编辑规格' : '新增规格') : drawer === 'payment' ? '支付配置' : '编辑浮层文案';
   const drawerContent = drawer === 'settings' ? settingsForm : drawer === 'site' ? siteForm : drawer === 'media' ? mediaForm : drawer === 'review' ? reviewForm : drawer === 'sku' ? skuForm : drawer === 'payment' ? paymentForm : purchaseForm;
-  return <Layout className="antd-admin-layout"><Sider theme="light" width={260} breakpoint="lg" collapsedWidth={80}><div className="antd-admin-brand"><div className="antd-admin-logo"><TagsOutlined /></div><div><strong>管理系统</strong><span>多站点后台</span></div></div><Menu mode="inline" selectedKeys={[activePage]} items={navItems} onClick={({ key }) => navigate(`/${key}`)} /><div className="antd-admin-account"><Tag color="blue">A</Tag><div><strong>管理员</strong><span>{bootstrap?.site.name ?? 'System Admin'}</span></div></div></Sider><Layout><Header className="antd-admin-header"><Space><Title level={4}>管理中心</Title>{bootstrap && currentSiteId ? <Select className="admin-site-switch" value={currentSiteId} onChange={(id) => updateSiteId(id)} options={bootstrap.sites.map((site) => ({ value: site.id, label: site.name }))} /> : null}</Space><Space><Button type="text" icon={<BellOutlined />} aria-label="通知" /><Button type="text" icon={<QuestionCircleOutlined />} aria-label="帮助" /><Button type="link" icon={<LogoutOutlined />} onClick={handleLogout}>退出登录</Button></Space></Header><Content className="antd-admin-content">{loading && !bootstrap ? <Spin size="large" /> : content}</Content></Layout><Drawer title={drawerTitle} open={Boolean(drawer)} onClose={closeDrawer} width={drawer === 'settings' || drawer === 'payment' ? 720 : 560} destroyOnClose>{drawerContent}</Drawer></Layout>;
+  return (
+    <>
+      <Layout className="antd-admin-layout">
+        <Sider theme="light" width={260} breakpoint="lg" collapsedWidth={80}>
+          <div className="antd-admin-brand">
+            <div className="antd-admin-logo">
+              <TagsOutlined />
+            </div>
+            <div>
+              <strong>管理系统</strong>
+              <span>多站点后台</span>
+            </div>
+          </div>
+          <Menu mode="inline" selectedKeys={[activePage]} items={navItems} onClick={({ key }) => navigate(`/${key}`)} />
+          <div className="antd-admin-account">
+            <Tag color="blue">A</Tag>
+            <div>
+              <strong>管理员</strong>
+              <span>{bootstrap?.site.name ?? 'System Admin'}</span>
+            </div>
+          </div>
+        </Sider>
+        <Layout>
+          <Header className="antd-admin-header">
+            <Space>
+              <Title level={4}>管理中心</Title>
+              {bootstrap && currentSiteId ? (
+                <Select
+                  className="admin-site-switch"
+                  value={currentSiteId}
+                  onChange={(id) => updateSiteId(id)}
+                  options={bootstrap.sites.map((site) => ({ value: site.id, label: site.name }))}
+                />
+              ) : null}
+            </Space>
+            <Space>
+              <Button type="text" icon={<BellOutlined />} aria-label="通知" />
+              <Button type="text" icon={<QuestionCircleOutlined />} aria-label="帮助" />
+              <Button type="link" icon={<LogoutOutlined />} onClick={handleLogout}>
+                退出登录
+              </Button>
+            </Space>
+          </Header>
+          <Content className="antd-admin-content">{loading && !bootstrap ? <Spin size="large" /> : content}</Content>
+        </Layout>
+        <Drawer title={drawerTitle} open={Boolean(drawer)} onClose={closeDrawer} width={drawer === 'settings' || drawer === 'payment' ? 720 : 560} destroyOnClose>
+          {drawerContent}
+        </Drawer>
+      </Layout>
+      <OrderExportModal
+        visible={exportModalVisible}
+        onCancel={() => setExportModalVisible(false)}
+        onExport={handleExportOrders}
+      />
+    </>
+  );
 }
 
 export function App() {
