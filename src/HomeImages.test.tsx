@@ -21,14 +21,28 @@ describe('首页图片渲染', () => {
     sessionStorage.clear();
   });
 
+  it('加载阶段图片骨架位于轮播图同尺寸的 .hero 容器内', () => {
+    const { container } = render(<App />);
+
+    // 首次同步渲染时数据尚未返回，展示骨架屏；图片骨架必须是 .hero 的直接子元素，
+    // 配合 CSS（.hero > .ant-skeleton 宽高 100%）才能撑满整个轮播区域
+    const skeleton = container.querySelector('.hero > .ant-skeleton');
+    expect(skeleton).not.toBeNull();
+    expect(skeleton?.querySelector('.ant-skeleton-image')).not.toBeNull();
+  });
+
   it('轮播图渲染真实图片链接', async () => {
     const { container } = render(<App />);
 
-    await waitFor(() => expect(container.querySelector('.slides')).not.toBeNull());
-    const slides = container.querySelector('.slides') as HTMLElement;
-    const hero = within(slides).getByAltText('轮播图1');
-    expect(hero.tagName).toBe('IMG');
-    expect(hero).toHaveAttribute('src', 'https://cdn.example.com/hero-1.png');
+    await waitFor(() => expect(container.querySelector('.hero .slick-track')).not.toBeNull());
+    const track = container.querySelector('.hero .slick-track') as HTMLElement;
+    // antd Carousel（react-slick）在 infinite 模式下会克隆首尾幻灯片，同一 alt 可能出现多次
+    const heroImgs = within(track).getAllByAltText('轮播图1');
+    expect(heroImgs.length).toBeGreaterThan(0);
+    for (const img of heroImgs) {
+      expect(img.tagName).toBe('IMG');
+      expect(img).toHaveAttribute('src', 'https://cdn.example.com/hero-1.png');
+    }
   });
 
   it('评价图渲染真实图片链接', async () => {
@@ -58,7 +72,7 @@ describe('首页图片渲染', () => {
   it('页面上不存在丢失 src 的图片占位', async () => {
     const { container } = render(<App />);
 
-    await waitFor(() => expect(container.querySelector('.slides img')).not.toBeNull());
+    await waitFor(() => expect(container.querySelector('.hero .slick-track img')).not.toBeNull());
     const emptySrc = Array.from(container.querySelectorAll('.ant-image img')).filter(
       (img) => !img.getAttribute('src'),
     );

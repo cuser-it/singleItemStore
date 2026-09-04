@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import LikeOutlined from '@ant-design/icons/LikeOutlined';
 import Skeleton from 'antd/es/skeleton';
+import Carousel from 'antd/es/carousel';
 import { ProgressiveImage } from './components/ProgressiveImage';
 import { CheckoutSheet, clampCheckoutQuantity, type CheckoutRecipient } from './components/CheckoutSheet';
 import { usePathname } from './hooks/usePathname';
@@ -130,7 +131,6 @@ function DRu() {
   const pathname = usePathname();
   const [bootstrap, setBootstrap] = useState<PublicBootstrap | null>(() => readCachedBootstrap(pathname === '/' ? undefined : pathname.slice(1)));
   const [loadError, setLoadError] = useState('');
-  const [slide, setSlide] = useState(0);
   const [selectedSkuId, setSelectedSkuId] = useState('single');
   const [quantity, setQuantity] = useState(1);
   const [checkoutPayment, setCheckoutPayment] = useState<'wxpay' | 'alipay'>('wxpay');
@@ -170,12 +170,6 @@ function DRu() {
       active = false;
     };
   }, [slug]);
-
-  useEffect(() => {
-    if (!bootstrap?.heroImages.length) return;
-    const timer = window.setInterval(() => setSlide((current) => (current + 1) % bootstrap.heroImages.length), 2500);
-    return () => window.clearInterval(timer);
-  }, [bootstrap?.heroImages.length]);
 
   useEffect(() => {
     if (!bootstrap?.floatingPurchases.length) return;
@@ -289,18 +283,13 @@ function DRu() {
     <div className="store-page">
       <main>
         <section className="hero" aria-label="商品图片">
-          <div className="slides" style={{ transform: `translateX(${-100 * slide}%)` }}>
+          <Carousel autoplay autoplaySpeed={2500} dots={{ className: 'hero-dots' }}>
             {heroImages.map((image, index) => (
               <div className="slide" key={image.id}>
                 <ProgressiveImage src={image.resolvedUrl} alt={image.alt} draggable={false} loading={index === 0 ? 'eager' : 'lazy'} fetchPriority={index === 0 ? 'high' : 'auto'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             ))}
-          </div>
-          <div className="dots" aria-hidden="true">
-            {heroImages.map((image, index) => (
-              <button key={image.id} className={index === slide ? 'dot active' : 'dot'} type="button" onClick={() => setSlide(index)} aria-label={`切换到第${index + 1}张`} />
-            ))}
-          </div>
+          </Carousel>
         </section>
 
         <PriceBanner sku={selectedSku} />
