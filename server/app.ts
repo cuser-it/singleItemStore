@@ -232,11 +232,21 @@ export async function createApp(options: CreateAppOptions = {}) {
   const uploadStorage = createSafeUploadStorage(uploadDir, options.uploadStorage);
   const orderService = new OrderService(store);
   const sessions = new Map<string, true>();
+  const publicBootstrapCache = new Map<string, { expiresAt: number; value: Promise<unknown> }>();
+  const clearPublicBootstrapCache = () => publicBootstrapCache.clear();
   const app = express();
 
   app.use(cors({ origin: true, credentials: true }));
   app.use(cookieParser());
   app.use(jsonParser);
+  app.use('/api/admin', (req, res, next) => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      res.on('finish', () => {
+        if (res.statusCode < 400) clearPublicBootstrapCache();
+      });
+    }
+    next();
+  });
   app.use('/img', express.static(uploadDir));
 
   app.get('/healthz', (_req, res) => {
@@ -245,18 +255,40 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.get('/api/public/bootstrap', async (req, res) => {
     const slug = req.query.slug as string | undefined;
-    let siteId: number | undefined;
-    
-    if (slug) {
-      const site = await store.getSiteBySlug(slug);
-      if (!site || !site.isActive) {
-        return res.status(404).json({ error: '站点不存在或未启用' });
-      }
-      siteId = site.id;
+    const cacheKey = slug || '__default__';
+    const cached = publicBootstrapCache.get(cacheKey);
+
+    if (cached && cached.expiresAt > Date.now()) {
+      res.setHeader('X-Cache', 'HIT');
+      return res.json(await cached.value);
     }
-    
-    const bootstrap = mapBootstrapWithResolvedUrls(await store.getBootstrap(siteId));
-    res.json({ ...bootstrap, skus: await orderService.listSkus(bootstrap.site.id, true) });
+
+    const value = (async () => {
+      let siteId: number | undefined;
+      if (slug) {
+        const site = await store.getSiteBySlug(slug);
+        if (!site || !site.isActive) {
+          const error = new Error('站点不存在或未启用') as Error & { status?: number };
+          error.status = 404;
+          throw error;
+        }
+        siteId = site.id;
+      }
+
+      const bootstrap = mapBootstrapWithResolvedUrls(await store.getBootstrap(siteId));
+      return { ...bootstrap, skus: await orderService.listSkus(bootstrap.site.id, true) };
+    })();
+
+    publicBootstrapCache.set(cacheKey, { expiresAt: Date.now() + 30_000, value });
+
+    try {
+      res.setHeader('X-Cache', 'MISS');
+      res.json(await value);
+    } catch (error) {
+      publicBootstrapCache.delete(cacheKey);
+      const status = error && typeof error === 'object' && 'status' in error ? Number(error.status) : 500;
+      res.status(status).json({ error: error instanceof Error ? error.message : 'failed to load site' });
+    }
   });
 
   app.get('/api/public/site', async (_req, res) => {

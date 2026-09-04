@@ -322,6 +322,23 @@ describe('backend', () => {
     expect(second.data.order.paymentStatus).toBe('PAYING');
   });
 
+  it('caches public bootstrap reads and invalidates after admin writes', async () => {
+    await login();
+
+    const first = await fetch(`${baseUrl}/api/public/bootstrap`);
+    const second = await fetch(`${baseUrl}/api/public/bootstrap`);
+    expect(first.status).toBe(200);
+    expect(second.headers.get('x-cache')).toBe('HIT');
+
+    const sites = await fetch(`${baseUrl}/api/admin/sites`, { headers: { cookie: authCookie } }).then((response) => response.json()) as Array<{ id: number }>;
+    const toggled = await fetch(`${baseUrl}/api/admin/sites/${sites[0].id}/activate`, { method: 'POST', headers: { cookie: authCookie } });
+    expect(toggled.status).toBe(200);
+    const restored = await fetch(`${baseUrl}/api/admin/sites/${sites[0].id}/activate`, { method: 'POST', headers: { cookie: authCookie } });
+    expect(restored.status).toBe(200);
+
+    const afterWrite = await fetch(`${baseUrl}/api/public/bootstrap`);
+    expect(afterWrite.headers.get('x-cache')).toBe('MISS');
+  });
   it('enforces shipping, refund marking, soft delete conditions, and export columns', async () => {
     await login();
     const skus = await fetch(`${baseUrl}/api/admin/skus`, { headers: { cookie: authCookie } }).then((response) => response.json()) as Array<{ id: number }>;
