@@ -73,52 +73,64 @@ function buildSiteUpdateInput(body: any): SiteUpdateInput {
   };
 }
 
-function buildMediaInput(body: any): MediaAssetInput {
+function buildMediaInput(body: any): { input: MediaAssetInput; siteId?: number } {
   return {
-    section: pickSection(body.section),
-    sourceType: body.sourceType === 'url' ? 'url' : 'upload',
-    source: String(body.source ?? '').trim(),
-    alt: String(body.alt ?? '').trim(),
-    sortOrder: toNumber(body.sortOrder, 0),
-    enabled: toBoolean(body.enabled, true),
+    input: {
+      section: pickSection(body.section),
+      sourceType: body.sourceType === 'url' ? 'url' : 'upload',
+      source: String(body.source ?? '').trim(),
+      alt: String(body.alt ?? '').trim(),
+      sortOrder: toNumber(body.sortOrder, 0),
+      enabled: toBoolean(body.enabled, true),
+    },
+    siteId: body.siteId ? Number(body.siteId) : undefined,
   };
 }
 
-function buildReviewInput(body: any): ReviewInput {
+function buildReviewInput(body: any): { input: ReviewInput; siteId?: number } {
   return {
-    name: String(body.name ?? '').trim(),
-    content: String(body.content ?? '').trim(),
-    images: toStringArray(body.images),
-    featuredOnHome: toBoolean(body.featuredOnHome, false),
-    homeOrder: toNumber(body.homeOrder, 0),
-    enabled: toBoolean(body.enabled, true),
+    input: {
+      name: String(body.name ?? '').trim(),
+      content: String(body.content ?? '').trim(),
+      images: toStringArray(body.images),
+      featuredOnHome: toBoolean(body.featuredOnHome, false),
+      homeOrder: toNumber(body.homeOrder, 0),
+      enabled: toBoolean(body.enabled, true),
+    },
+    siteId: body.siteId ? Number(body.siteId) : undefined,
   };
 }
 
-function buildFloatingPurchaseInput(body: any): FloatingPurchaseInput {
+function buildFloatingPurchaseInput(body: any): { input: FloatingPurchaseInput; siteId?: number } {
   return {
-    content: String(body.content ?? '').trim(),
-    enabled: toBoolean(body.enabled, true),
-    sortOrder: toNumber(body.sortOrder, 0),
+    input: {
+      content: String(body.content ?? '').trim(),
+      enabled: toBoolean(body.enabled, true),
+      sortOrder: toNumber(body.sortOrder, 0),
+    },
+    siteId: body.siteId ? Number(body.siteId) : undefined,
   };
 }
 
-function buildSettingsInput(body: any): SiteSettingsUpdateInput {
+function buildSettingsInput(body: any): { input: SiteSettingsUpdateInput; siteId?: number } {
   return {
-    shopName: String(body.shopName ?? defaultBootstrap.settings.shopName).trim(),
-    title: String(body.title ?? defaultBootstrap.settings.title).trim(),
-    subtitle: String(body.subtitle ?? defaultBootstrap.settings.subtitle).trim(),
-    highlight: String(body.highlight ?? defaultBootstrap.settings.highlight).trim(),
-    serviceNote: String(body.serviceNote ?? defaultBootstrap.settings.serviceNote).trim(),
-    guarantee: toStringArray(body.guarantee, defaultBootstrap.settings.guarantee),
-    productDescription: String(body.productDescription ?? defaultBootstrap.settings.productDescription).trim(),
-    shippingNote: String(body.shippingNote ?? defaultBootstrap.settings.shippingNote).trim(),
-    reminder: String(body.reminder ?? defaultBootstrap.settings.reminder).trim(),
-    shippingTime: String(body.shippingTime ?? defaultBootstrap.settings.shippingTime).trim(),
-    soldText: String(body.soldText ?? defaultBootstrap.settings.soldText).trim(),
-    marqueeText: String(body.marqueeText ?? defaultBootstrap.settings.marqueeText).trim(),
-    reviewTags: toStringArray(body.reviewTags, defaultBootstrap.settings.reviewTags),
-    heroImageCount: toNumber(body.heroImageCount, defaultBootstrap.settings.heroImageCount),
+    input: {
+      shopName: String(body.shopName ?? defaultBootstrap.settings.shopName).trim(),
+      title: String(body.title ?? defaultBootstrap.settings.title).trim(),
+      subtitle: String(body.subtitle ?? defaultBootstrap.settings.subtitle).trim(),
+      highlight: String(body.highlight ?? defaultBootstrap.settings.highlight).trim(),
+      serviceNote: String(body.serviceNote ?? defaultBootstrap.settings.serviceNote).trim(),
+      guarantee: toStringArray(body.guarantee, defaultBootstrap.settings.guarantee),
+      productDescription: String(body.productDescription ?? defaultBootstrap.settings.productDescription).trim(),
+      shippingNote: String(body.shippingNote ?? defaultBootstrap.settings.shippingNote).trim(),
+      reminder: String(body.reminder ?? defaultBootstrap.settings.reminder).trim(),
+      shippingTime: String(body.shippingTime ?? defaultBootstrap.settings.shippingTime).trim(),
+      soldText: String(body.soldText ?? defaultBootstrap.settings.soldText).trim(),
+      marqueeText: String(body.marqueeText ?? defaultBootstrap.settings.marqueeText).trim(),
+      reviewTags: toStringArray(body.reviewTags, defaultBootstrap.settings.reviewTags),
+      heroImageCount: toNumber(body.heroImageCount, defaultBootstrap.settings.heroImageCount),
+    },
+    siteId: body.siteId ? Number(body.siteId) : undefined,
   };
 }
 
@@ -534,7 +546,8 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.put('/api/admin/site-settings', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    const updated = await store.updateSiteSettings(buildSettingsInput(req.body));
+    const { input, siteId } = buildSettingsInput(req.body);
+    const updated = await store.updateSiteSettings(input, siteId);
     await orderService.listSkus(updated.siteId);
     res.json(updated);
   });
@@ -547,12 +560,14 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.post('/api/admin/media-assets', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.status(201).json(await store.createMediaAsset(buildMediaInput(req.body)));
+    const { input, siteId } = buildMediaInput(req.body);
+    res.status(201).json(await store.createMediaAsset(input, siteId));
   });
 
   app.put('/api/admin/media-assets/:id', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    const item = await store.updateMediaAsset(Number(req.params.id), buildMediaInput(req.body));
+    const { input, siteId } = buildMediaInput(req.body);
+    const item = await store.updateMediaAsset(Number(req.params.id), input, siteId);
     if (!item) {
       res.status(404).json({ message: 'not found' });
       return;
@@ -572,12 +587,14 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.post('/api/admin/reviews', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.status(201).json(await store.createReview(buildReviewInput(req.body)));
+    const { input, siteId } = buildReviewInput(req.body);
+    res.status(201).json(await store.createReview(input, siteId));
   });
 
   app.put('/api/admin/reviews/:id', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    const item = await store.updateReview(Number(req.params.id), buildReviewInput(req.body));
+    const { input, siteId } = buildReviewInput(req.body);
+    const item = await store.updateReview(Number(req.params.id), input, siteId);
     if (!item) {
       res.status(404).json({ message: 'not found' });
       return;
@@ -597,12 +614,14 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.post('/api/admin/floating-purchases', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.status(201).json(await store.createFloatingPurchase(buildFloatingPurchaseInput(req.body)));
+    const { input, siteId } = buildFloatingPurchaseInput(req.body);
+    res.status(201).json(await store.createFloatingPurchase(input, siteId));
   });
 
   app.put('/api/admin/floating-purchases/:id', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    const item = await store.updateFloatingPurchase(Number(req.params.id), buildFloatingPurchaseInput(req.body));
+    const { input, siteId } = buildFloatingPurchaseInput(req.body);
+    const item = await store.updateFloatingPurchase(Number(req.params.id), input, siteId);
     if (!item) {
       res.status(404).json({ message: 'not found' });
       return;

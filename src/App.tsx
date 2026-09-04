@@ -834,7 +834,7 @@ function AdminApp() {
     if (!settings) return;
     const lines = (value: string | string[] | undefined, fallback: string[]) => Array.isArray(value) ? value : String(value ?? '').split('\n').map((item) => item.trim()).filter(Boolean) || fallback;
     try {
-      await saveSiteSettings({
+      await saveSiteSettings(currentSiteId, {
         ...settings,
         ...values,
         guarantee: lines(values.guarantee, settings.guarantee),
@@ -843,7 +843,8 @@ function AdminApp() {
       closeDrawer();
       await refresh();
       message.success('站点配置已保存');
-    } catch {
+    } catch (error) {
+      console.error('保存站点配置失败:', error);
       message.error('保存失败，请稍后重试');
     }
   };
@@ -896,7 +897,7 @@ function AdminApp() {
         message.warning('请上传图片或填写图片地址');
         return;
       }
-      const payload = { ...mediaDraft, source };
+      const payload = { ...mediaDraft, source, siteId: currentSiteId };
       if (mediaDraft.section === 'hero' && !mediaDraft.id && (bootstrap?.heroImages.length ?? 0) >= 15) {
         message.warning('首页轮播图最多 15 张');
         return;
@@ -912,7 +913,7 @@ function AdminApp() {
   const handleReviewSave = async () => {
     try {
       const images = reviewDraft.images.split('\n').map((item) => item.trim()).filter(Boolean);
-      const payload = { ...reviewDraft, images };
+      const payload = { ...reviewDraft, images, siteId: currentSiteId };
       if (reviewDraft.id) await updateReview(reviewDraft.id, payload); else await createReview(payload);
       closeDrawer();
       await refresh();
@@ -923,7 +924,7 @@ function AdminApp() {
   };
   const handlePurchaseSave = async () => {
     try {
-      if (purchaseDraft.id) await updateFloatingPurchase(purchaseDraft.id, purchaseDraft); else await createFloatingPurchase(purchaseDraft);
+      if (purchaseDraft.id) await updateFloatingPurchase(purchaseDraft.id, { ...purchaseDraft, siteId: currentSiteId }); else await createFloatingPurchase({ ...purchaseDraft, siteId: currentSiteId });
       closeDrawer();
       await refresh();
       message.success(purchaseDraft.id ? '浮层文案已保存' : '浮层文案已添加');
@@ -1118,7 +1119,7 @@ function AdminApp() {
   const skuColumns: ColumnsType<ProductSku> = [{ title: '编码', dataIndex: 'skuCode' }, { title: '规格', dataIndex: 'name' }, { title: '售价', dataIndex: 'price', render: (value: string) => `¥${value}` }, { title: '原价', dataIndex: 'originalPrice', render: (value: string) => `¥${value}` }, { title: '排序', dataIndex: 'sortOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'success' : 'default'}>{enabled ? '启用' : '停用'}</Tag> }, { title: '操作', key: 'action', render: (_: unknown, item: ProductSku) => <Space><Button type="link" onClick={() => openSku(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('规格', async () => { await deleteSku(item.id); })} disabled={!item.enabled}>停用</Button></Space> }];
   const orderColumns: ColumnsType<Order> = [{ title: '订单号', dataIndex: 'orderNo' }, { title: '姓名', dataIndex: 'recipientName' }, { title: '手机号', dataIndex: 'phone' }, { title: '规格', dataIndex: 'skuName' }, { title: '数量', dataIndex: 'quantity' }, { title: '金额', dataIndex: 'totalAmount', render: (value: string) => `¥${value}` }, { title: '支付', dataIndex: 'paymentStatus', render: (value: string) => <Tag color={value === 'PAID' ? 'green' : value === 'REFUNDED' ? 'purple' : 'orange'}>{formatPaymentStatus(value)}</Tag> }, { title: '履约', dataIndex: 'fulfillmentStatus', render: (value: string) => <Tag color={value === 'SHIPPED' ? 'blue' : 'default'}>{formatFulfillmentStatus(value)}</Tag> }, { title: '物流', render: (_: unknown, item: Order) => item.logisticsNo ? `${item.logisticsCompany ?? ''} ${item.logisticsNo}` : '-' }, { title: '创建时间', dataIndex: 'createdAt', render: (value: string) => new Date(value).toLocaleString('zh-CN') }, { title: '操作', key: 'action', render: (_: unknown, item: Order) => <Space><Button type="link" onClick={() => modal.info({ title: item.orderNo, width: 720, content: <Descriptions column={1} bordered size="small"><Descriptions.Item label="商品">{item.productName}</Descriptions.Item><Descriptions.Item label="规格">{item.skuName}</Descriptions.Item><Descriptions.Item label="收货人">{item.recipientName}</Descriptions.Item><Descriptions.Item label="手机号">{item.phone}</Descriptions.Item><Descriptions.Item label="地址">{item.address}</Descriptions.Item><Descriptions.Item label="金额">¥{item.totalAmount}</Descriptions.Item><Descriptions.Item label="物流">{item.logisticsNo ? `${item.logisticsCompany ?? ''} ${item.logisticsNo}` : '-'}</Descriptions.Item><Descriptions.Item label="退款备注">{item.refundNote ?? '-'}</Descriptions.Item></Descriptions> })}>详情</Button><Button type="link" onClick={() => void handleShipOrder(item)} disabled={item.fulfillmentStatus === 'SHIPPED' || Boolean(item.deletedAt)}>发货并完成</Button><Button type="link" onClick={() => void handleRefundOrder(item)} disabled={Boolean(item.refundedAt) || Boolean(item.deletedAt)}>标记退款</Button><Button type="link" danger onClick={() => void handleSoftDeleteOrder(item)} disabled={Boolean(item.deletedAt)}>删除</Button></Space> }];
   const siteColumns: ColumnsType<Site> = [{ title: '站点', dataIndex: 'name' }, { title: '标识', dataIndex: 'slug' }, { title: '创建时间', dataIndex: 'createdAt', render: (value: string) => new Date(value).toLocaleString() }, { title: '状态', dataIndex: 'isActive', render: (isActive: boolean, site: Site) => <Switch size="small" checked={isActive} onChange={async () => { await handleActivateSite(site); }} /> }, { title: '操作', key: 'action', render: (_: unknown, site: Site) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => openSite(site)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('站点', async () => { await deleteSite(site.id); })}>删除</Button></Space> }];
-  const reviewColumns: ColumnsType<Review> = [{ title: '用户', dataIndex: 'name', key: 'name', render: (name: string) => <Space><Tag color="blue">{name.slice(0, 1)}</Tag>{name}</Space> }, { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true }, { title: '图片', dataIndex: 'images', key: 'images', render: (images: string[]) => images[0] ? <img className="admin-table-thumb" src={images[0]} alt="评价图片" /> : <Text type="secondary">无图片</Text> }, { title: '首页展示', dataIndex: 'featuredOnHome', render: (value: boolean, item: Review) => <Switch size="small" checked={value} onChange={async (featuredOnHome) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '排序', dataIndex: 'homeOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean, item: Review) => <Switch size="small" checked={enabled} onChange={async (nextEnabled) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: nextEnabled }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '操作', key: 'action', render: (_: unknown, item: Review) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => openReview(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('评价', async () => { await deleteReview(item.id); })}>删除</Button></Space> }];
+  const reviewColumns: ColumnsType<Review> = [{ title: '用户', dataIndex: 'name', key: 'name', render: (name: string) => <Space><Tag color="blue">{name.slice(0, 1)}</Tag>{name}</Space> }, { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true }, { title: '图片', dataIndex: 'images', key: 'images', render: (images: string[]) => images[0] ? <img className="admin-table-thumb" src={images[0]} alt="评价图片" /> : <Text type="secondary">无图片</Text> }, { title: '首页展示', dataIndex: 'featuredOnHome', render: (value: boolean, item: Review) => <Switch size="small" checked={value} onChange={async (featuredOnHome) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled, siteId: currentSiteId }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '排序', dataIndex: 'homeOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean, item: Review) => <Switch size="small" checked={enabled} onChange={async (nextEnabled) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: nextEnabled, siteId: currentSiteId }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '操作', key: 'action', render: (_: unknown, item: Review) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => openReview(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('评价', async () => { await deleteReview(item.id); })}>删除</Button></Space> }];
   const mediaColumns: ColumnsType<MediaAsset> = [{ title: '预览', dataIndex: 'resolvedUrl', render: (url: string, item: MediaAsset) => url ? <img className="admin-table-thumb" src={url} alt={item.alt} /> : <Text type="secondary">无图片</Text> }, { title: '区域', dataIndex: 'section', render: (section: string) => section === 'hero' ? '首页轮播' : '详情图片' }, { title: '地址', dataIndex: 'resolvedUrl', ellipsis: true }, { title: '排序', dataIndex: 'sortOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'success' : 'default'}>{enabled ? '启用' : '禁用'}</Tag> }, { title: '操作', key: 'action', render: (_: unknown, item: MediaAsset) => <Space><Button type="link" onClick={() => openMedia(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('图片', async () => { await deleteMediaAsset(item.id); })}>删除</Button></Space> }];
   const purchaseColumns: ColumnsType<FloatingPurchase> = [{ title: '文案', dataIndex: 'content' }, { title: '排序', dataIndex: 'sortOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'success' : 'default'}>{enabled ? '启用' : '禁用'}</Tag> }, { title: '操作', key: 'action', render: (_: unknown, item: FloatingPurchase) => <Space><Button type="link" onClick={() => openPurchase(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('浮层文案', async () => { await deleteFloatingPurchase(item.id); })}>删除</Button></Space> }];
   const selectedReviewItems = reviews.filter((item) => selectedReviewIds.includes(item.id));
@@ -1132,6 +1133,7 @@ function AdminApp() {
     featuredOnHome: item.featuredOnHome,
     homeOrder: item.homeOrder,
     enabled,
+    siteId: currentSiteId,
   });
 
   const mediaUpdatePayload = (item: MediaAsset, enabled: boolean) => ({
@@ -1141,12 +1143,14 @@ function AdminApp() {
     alt: item.alt,
     sortOrder: item.sortOrder,
     enabled,
+    siteId: currentSiteId,
   });
 
   const purchaseUpdatePayload = (item: FloatingPurchase, enabled: boolean) => ({
     content: item.content,
     enabled,
     sortOrder: item.sortOrder,
+    siteId: currentSiteId,
   });
 
   const handleBatchReviewDelete = () => confirmBulkAction('批量删除评价', `已选择 ${selectedReviewIds.length} 项，确认删除吗？`, async () => { await Promise.all(selectedReviewItems.map((item) => deleteReview(item.id))); }, '评价已删除');

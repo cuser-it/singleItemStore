@@ -81,10 +81,10 @@ export async function activateSite(id: number) {
   return requestJson<Site>(`/api/admin/sites/${id}/activate`, { method: 'POST' });
 }
 
-export async function saveSiteSettings(input: SiteSettingsUpdateInput) {
+export async function saveSiteSettings(siteId: number, input: SiteSettingsUpdateInput) {
   return requestJson<SiteSettings>('/api/admin/site-settings', {
     method: 'PUT',
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, siteId }),
   });
 }
 
