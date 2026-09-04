@@ -1314,6 +1314,13 @@ function AdminApp() {
         </div>
         <Button type="primary" onClick={openPaymentSettings}>编辑支付配置</Button>
       </div>
+      <Alert
+        type="info"
+        message="全局配置说明"
+        description="支付配置是全局唯一的，所有站点共享同一份支付配置，不会根据站点切换而改变。"
+        showIcon
+        style={{ marginBottom: 16 }}
+      />
       <Card className="admin-content-card">
         <Descriptions column={1}>
           <Descriptions.Item label="网关地址">{paymentSettings?.gatewayUrl}</Descriptions.Item>
