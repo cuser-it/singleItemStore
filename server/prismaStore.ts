@@ -453,6 +453,10 @@ export async function createPrismaStore(): Promise<ContentStore> {
     async getActiveSite() {
       return mapSite(await getActiveSiteRecord());
     },
+    async getSiteBySlug(slug: string) {
+      const site = await client.site.findUnique({ where: { slug } });
+      return site ? mapSite(site) : null;
+    },
     async listSites() {
       const records = await client.site.findMany({ orderBy: [{ id: 'asc' }] });
       return records.map(mapSite);
@@ -488,10 +492,7 @@ export async function createPrismaStore(): Promise<ContentStore> {
     async switchSite(id: number) {
       const exists = await client.site.findUnique({ where: { id } });
       if (!exists) return null;
-      await client.$transaction([
-        client.site.updateMany({ data: { isActive: false } }),
-        client.site.update({ where: { id }, data: { isActive: true } }),
-      ]);
+      await client.site.update({ where: { id }, data: { isActive: !exists.isActive } });
       return mapSite((await client.site.findUnique({ where: { id } }))!);
     },
     async deleteSite(id: number) {
@@ -499,14 +500,14 @@ export async function createPrismaStore(): Promise<ContentStore> {
       if (!exists) return false;
       const count = await client.site.count();
       if (count <= 1) return false;
-      await client.site.delete({ where: { id } });
-      if (exists.isActive) {
-        const nextSite = await client.site.findFirst({ orderBy: [{ id: 'asc' }] });
-        if (nextSite) {
-          await client.site.updateMany({ data: { isActive: false } });
-          await client.site.update({ where: { id: nextSite.id }, data: { isActive: true } });
-        }
+      
+      // 检查是否有订单
+      const orderCount = await client.order.count({ where: { siteId: id } });
+      if (orderCount > 0) {
+        throw new Error(`无法删除站点：该站点有 ${orderCount} 个订单，请先处理订单`);
       }
+      
+      await client.site.delete({ where: { id } });
       return true;
     },
     async getBootstrap(siteId?: number): Promise<PublicBootstrap> {

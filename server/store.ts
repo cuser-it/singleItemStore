@@ -21,6 +21,7 @@ import {
 
 export type ContentStore = {
   getActiveSite: () => Promise<Site>;
+  getSiteBySlug: (slug: string) => Promise<Site | null>;
   listSites: () => Promise<Site[]>;
   createSite: (input: SiteInput) => Promise<Site>;
   updateSite: (id: number, input: SiteUpdateInput) => Promise<Site | null>;

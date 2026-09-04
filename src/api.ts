@@ -30,8 +30,9 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
   return (await response.json()) as T;
 }
 
-export async function fetchPublicBootstrap() {
-  return requestJson<PublicBootstrap>('/api/public/bootstrap');
+export async function fetchPublicBootstrap(slug?: string) {
+  const url = slug ? `/api/public/bootstrap?slug=${encodeURIComponent(slug)}` : '/api/public/bootstrap';
+  return requestJson<PublicBootstrap>(url);
 }
 
 export async function fetchAdminBootstrap() {
@@ -168,8 +169,9 @@ export async function uploadAsset(file: File) {
   });
 }
 
-export async function fetchAdminSkus() {
-  return requestJson<ProductSku[]>('/api/admin/skus');
+export async function fetchAdminSkus(siteId?: number) {
+  const params = siteId ? `?siteId=${siteId}` : '';
+  return requestJson<ProductSku[]>(`/api/admin/skus${params}`);
 }
 
 export async function createSku(input: ProductSkuInput) {
@@ -230,8 +232,13 @@ export async function softDeleteOrder(id: number, deletionReason: string) {
   });
 }
 
-export async function fetchPaymentSettings() {
-  return requestJson<PaymentSettings>('/api/admin/payment-settings');
+export async function fetchPaymentSettings(siteId?: number) {
+  const params = siteId ? `?siteId=${siteId}` : '';
+  return requestJson<PaymentSettings>(`/api/admin/payment-settings${params}`);
+}
+
+export async function fetchSiteSettings(siteId: number) {
+  return requestJson<SiteSettings>(`/api/admin/sites/${siteId}/settings`);
 }
 
 export async function savePaymentSettings(input: PaymentSettingsInput) {

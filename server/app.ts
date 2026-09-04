@@ -210,8 +210,19 @@ export async function createApp(options: CreateAppOptions = {}) {
     res.json({ ok: true });
   });
 
-  app.get('/api/public/bootstrap', async (_req, res) => {
-    const bootstrap = mapBootstrapWithResolvedUrls(await store.getBootstrap());
+  app.get('/api/public/bootstrap', async (req, res) => {
+    const slug = req.query.slug as string | undefined;
+    let siteId: number | undefined;
+    
+    if (slug) {
+      const site = await store.getSiteBySlug(slug);
+      if (!site || !site.isActive) {
+        return res.status(404).json({ error: '站点不存在或未启用' });
+      }
+      siteId = site.id;
+    }
+    
+    const bootstrap = mapBootstrapWithResolvedUrls(await store.getBootstrap(siteId));
     res.json({ ...bootstrap, skus: await orderService.listSkus(bootstrap.site.id, true) });
   });
 
@@ -335,7 +346,8 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.get('/api/admin/skus', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.json(await orderService.listSkus());
+    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    res.json(await orderService.listSkus(siteId));
   });
 
   app.post('/api/admin/skus', async (req, res) => {
@@ -448,7 +460,8 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.get('/api/admin/payment-settings', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.json(await orderService.getPaymentSettings());
+    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    res.json(await orderService.getPaymentSettings(siteId));
   });
 
   app.put('/api/admin/payment-settings', async (req, res) => {
@@ -506,6 +519,17 @@ export async function createApp(options: CreateAppOptions = {}) {
       return;
     }
     res.json(site);
+  });
+
+  app.get('/api/admin/sites/:id/settings', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    const siteId = Number(req.params.id);
+    const settings = await store.getSiteSettings(siteId);
+    if (!settings) {
+      res.status(404).json({ message: 'not found' });
+      return;
+    }
+    res.json(settings);
   });
 
   app.put('/api/admin/site-settings', async (req, res) => {
