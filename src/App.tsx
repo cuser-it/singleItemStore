@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
+import LikeOutlined from '@ant-design/icons/LikeOutlined';
 import Image from 'antd/es/image';
 import Skeleton from 'antd/es/skeleton';
 import { CheckoutSheet, clampCheckoutQuantity, type CheckoutRecipient } from './components/CheckoutSheet';
@@ -115,11 +116,11 @@ function titleText(settings: SiteSettings) {
   return settings.title || settings.shopName;
 }
 
-function getRandomAvatar(seed: string | number) {
-  const value = String(seed);
-  const palette = ['#f97316', '#0ea5e9', '#22c55e', '#e11d48'];
-  const color = palette[value.charCodeAt(0) % palette.length];
-  const initial = value.slice(-1).toUpperCase();
+function getRandomAvatar(label: string) {
+  const value = label.trim() || '?';
+  const palette = ['#f97316', '#0ea5e9', '#22c55e', '#e11d48', '#8b5cf6', '#14b8a6'];
+  const color = palette[Array.from(value).reduce((sum, char) => sum + char.charCodeAt(0), 0) % palette.length];
+  const initial = Array.from(value)[0].toUpperCase();
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="${color}"/><text x="20" y="25" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="white">${initial}</text></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
@@ -357,7 +358,7 @@ function DRu() {
           {reviews.map((review) => (
             <article className="review" key={review.id}>
               <div className="reviewer" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <img src={getRandomAvatar(review.id)} alt="" style={{ width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0 }} />
+                <img src={getRandomAvatar(review.name)} alt="" style={{ width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0 }} />
                 <span>{review.name}</span>
               </div>
               <p>{review.content}</p>
@@ -385,7 +386,7 @@ function DRu() {
             <ul>
               {latestItems.map((item, index) => (
                 <li key={`${item.id}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <img src={getRandomAvatar(`${item.id}-${index}`)} alt="" style={{ width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0 }} />
+                  <img src={getRandomAvatar(item.content)} alt="" style={{ width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0 }} />
                   <span>{item.content}</span>
                 </li>
               ))}
@@ -450,7 +451,7 @@ function DRu() {
           {floatingItem && (
             <>
               <img 
-                src={getRandomAvatar(`floating-${floatingItem.id || purchaseIndex}`)} 
+                src={getRandomAvatar(floatingItem.content)}
                 alt="" 
                 style={{ width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0 }} 
               />
@@ -460,7 +461,7 @@ function DRu() {
           {!floatingItem && floatingPurchases[0] && (
             <>
               <img 
-                src={getRandomAvatar(`floating-${floatingPurchases[0].id || 0}`)} 
+                src={getRandomAvatar(floatingPurchases[0].content)}
                 alt="" 
                 style={{ width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0 }} 
               />
@@ -486,7 +487,7 @@ function DRu() {
                 <div className="review-item-content" key={review.id}>
                   <div className="reviewer-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <img src={getRandomAvatar(review.id)} alt="" style={{ width: '14px', height: '14px', borderRadius: '50%', flexShrink: 0 }} />
+                      <img src={getRandomAvatar(review.name)} alt="" style={{ width: '14px', height: '14px', borderRadius: '50%', flexShrink: 0 }} />
                       <div>
                         <div className="reviewer-name">{review.name}</div>
                         <div className="reviewer-sub" style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
@@ -495,7 +496,7 @@ function DRu() {
                       </div>
                     </div>
                     <button type="button" onClick={() => handleReviewLike(review.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', background: '#f5f5f5', border: 'none', borderRadius: '12px', fontSize: '12px', color: '#666', cursor: 'pointer' }}>
-                      <span>👍</span>
+                      <LikeOutlined aria-hidden="true" />
                       <span>{reviewLikes?.[review.id] ?? 0}</span>
                     </button>
                   </div>
