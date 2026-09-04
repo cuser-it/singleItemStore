@@ -294,7 +294,6 @@ export class OrderService {
     await prismaClient.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "PaymentSettings" (
         "id" SERIAL PRIMARY KEY,
-        "siteId" INTEGER NOT NULL UNIQUE,
         "gatewayUrl" TEXT NOT NULL,
         "merchantId" TEXT NOT NULL,
         "encryptedSecret" TEXT NOT NULL,
@@ -847,10 +846,9 @@ export class OrderService {
       await this.log('payment_settings_updated', 'Payment settings updated', actor);
       return this.getPaymentSettings();
     }
-    const siteId = (await this.store.getActiveSite()).id;
-    const current = await prismaClient.paymentSettings.findUnique({ where: { siteId } });
+    const current = await prismaClient.paymentSettings.findFirst();
     const updated = await prismaClient.paymentSettings.upsert({
-      where: { siteId },
+      where: { id: current?.id ?? 0 },
       update: {
         gatewayUrl: input.gatewayUrl.trim(),
         merchantId: input.merchantId.trim(),
@@ -860,7 +858,6 @@ export class OrderService {
         returnUrl: input.returnUrl.trim(),
       },
       create: {
-        siteId,
         gatewayUrl: input.gatewayUrl.trim(),
         merchantId: input.merchantId.trim(),
         encryptedSecret: encodeSecret(input.merchantSecret ?? this.paymentSettings.merchantSecret ?? ''),
@@ -907,8 +904,7 @@ export class OrderService {
 
   private async loadPaymentSettingsState() {
     if (!this.persistent) return this.paymentSettings;
-    const siteId = (await this.store.getActiveSite()).id;
-    const existing = await prismaClient.paymentSettings.findUnique({ where: { siteId } });
+    const existing = await prismaClient.paymentSettings.findFirst();
     if (existing) {
       return {
         gatewayUrl: existing.gatewayUrl,
@@ -922,7 +918,6 @@ export class OrderService {
     }
     const created = await prismaClient.paymentSettings.create({
       data: {
-        siteId,
         gatewayUrl: this.paymentSettings.gatewayUrl,
         merchantId: this.paymentSettings.merchantId,
         encryptedSecret: encodeSecret(this.paymentSettings.merchantSecret ?? ''),

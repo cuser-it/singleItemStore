@@ -18,7 +18,6 @@ model Site {
   floatingPurchases FloatingPurchase[]
   productSkus       ProductSku[]
   orders            Order[]
-  paymentSettings   PaymentSettings?
   operationLogs     OperationLog[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
@@ -178,8 +177,6 @@ model Order {
 
 model PaymentSettings {
   id              Int      @id @default(autoincrement())
-  siteId          Int      @unique
-  site            Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
   gatewayUrl      String
   merchantId      String
   encryptedSecret String

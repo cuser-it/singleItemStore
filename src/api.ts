@@ -244,9 +244,8 @@ export async function softDeleteOrder(id: number, deletionReason: string) {
   });
 }
 
-export async function fetchPaymentSettings(siteId?: number) {
-  const params = siteId ? `?siteId=${siteId}` : '';
-  return requestJson<PaymentSettings>(`/api/admin/payment-settings${params}`);
+export async function fetchPaymentSettings() {
+  return requestJson<PaymentSettings>('/api/admin/payment-settings');
 }
 
 export async function fetchSiteSettings(siteId: number) {

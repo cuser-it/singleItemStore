@@ -483,8 +483,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.get('/api/admin/payment-settings', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
-    res.json(await orderService.getPaymentSettings(siteId));
+    res.json(await orderService.getPaymentSettings());
   });
 
   app.put('/api/admin/payment-settings', async (req, res) => {
