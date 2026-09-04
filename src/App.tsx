@@ -515,8 +515,27 @@ function DRu() {
       </main>
 
       <div className="purchase-feed" aria-live="polite">
-        <p className="purchase-item active">
-          {floatingItem?.content ?? floatingPurchases[0]?.content ?? ''}
+        <p className="purchase-item active" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {floatingItem && (
+            <>
+              <img 
+                src={getRandomAvatar(`floating-${floatingItem.id || purchaseIndex}`)} 
+                alt="" 
+                style={{ width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0 }} 
+              />
+              <span>{floatingItem.content}</span>
+            </>
+          )}
+          {!floatingItem && floatingPurchases[0] && (
+            <>
+              <img 
+                src={getRandomAvatar(`floating-${floatingPurchases[0].id || 0}`)} 
+                alt="" 
+                style={{ width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0 }} 
+              />
+              <span>{floatingPurchases[0].content}</span>
+            </>
+          )}
         </p>
       </div>
 
