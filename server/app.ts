@@ -129,6 +129,10 @@ function buildSettingsInput(body: any): { input: SiteSettingsUpdateInput; siteId
       marqueeText: String(body.marqueeText ?? defaultBootstrap.settings.marqueeText).trim(),
       reviewTags: toStringArray(body.reviewTags, defaultBootstrap.settings.reviewTags),
       heroImageCount: toNumber(body.heroImageCount, defaultBootstrap.settings.heroImageCount),
+      // 支付成功页 / 客服引导配置
+      paymentSuccessMessage: String(body.paymentSuccessMessage ?? '').trim() || defaultBootstrap.settings.paymentSuccessMessage,
+      customerServiceUrl: String(body.customerServiceUrl ?? '').trim(),
+      customerServiceQrCode: String(body.customerServiceQrCode ?? '').trim() || undefined,
     },
     siteId: body.siteId ? Number(body.siteId) : undefined,
   };
@@ -310,13 +314,15 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.get('/api/public/payment-success-config', async (_req, res) => {
     try {
-      const settings = await store.getActiveSiteSettings();
+      // 不传 siteId 即取当前活动站点的配置
+      const settings = await store.getSiteSettings();
       res.json({
         message: settings.paymentSuccessMessage || '添加客服领取服用说明',
         customerServiceUrl: settings.customerServiceUrl || '',
-        customerServiceQrCode: settings.customerServiceQrCode,
+        customerServiceQrCode: settings.customerServiceQrCode || undefined,
       });
     } catch (error) {
+      console.error('[payment-success-config] failed:', error);
       res.status(500).json({ message: 'failed to fetch config' });
     }
   });

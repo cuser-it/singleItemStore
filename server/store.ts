@@ -270,6 +270,8 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       state.settings[index] = {
         ...state.settings[index],
         ...clone(input),
+        // 可选字段需显式覆盖：clone 会丢掉 undefined 键，导致清空二维码后旧值残留
+        customerServiceQrCode: input.customerServiceQrCode?.trim() || undefined,
         updatedAt: new Date().toISOString(),
       };
       return clone(state.settings[index]);

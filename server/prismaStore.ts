@@ -65,6 +65,9 @@ function mapSettings(record: {
   reviewTags: Prisma.JsonValue;
   productVariants: Prisma.JsonValue;
   heroImageCount: number;
+  paymentSuccessMessage?: string | null;
+  customerServiceUrl?: string | null;
+  customerServiceQrCode?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): SiteSettings {
@@ -88,6 +91,9 @@ function mapSettings(record: {
     reviewTags: toStringArray(record.reviewTags),
     productVariants: Array.isArray(record.productVariants) ? (record.productVariants as SiteSettings['productVariants']) : [],
     heroImageCount: record.heroImageCount,
+    paymentSuccessMessage: record.paymentSuccessMessage || defaultBootstrap.settings.paymentSuccessMessage,
+    customerServiceUrl: record.customerServiceUrl ?? '',
+    customerServiceQrCode: record.customerServiceQrCode || undefined,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
@@ -256,10 +262,12 @@ async function ensureSchema() {
 async function ensureSeed() {
   await ensureSchema();
 
+  // 默认站点只在首次创建时激活；已有活动站点时不得再次强制激活（保证活动站点唯一）
+  const hasActiveSite = (await client.site.count({ where: { isActive: true } })) > 0;
   const defaultSite = await client.site.upsert({
     where: { slug: defaultBootstrap.site.slug },
-    update: { name: defaultBootstrap.site.name, isActive: true },
-    create: { id: DEFAULT_SITE_ID, name: defaultBootstrap.site.name, slug: defaultBootstrap.site.slug, isActive: true },
+    update: { name: defaultBootstrap.site.name },
+    create: { id: DEFAULT_SITE_ID, name: defaultBootstrap.site.name, slug: defaultBootstrap.site.slug, isActive: !hasActiveSite },
   });
   await client.$executeRawUnsafe('SELECT setval(pg_get_serial_sequence(\'"Site"\', \'id\'), COALESCE((SELECT MAX("id") FROM "Site"), 1))');
   await client.$executeRawUnsafe('SELECT setval(pg_get_serial_sequence(\'"SiteSettings"\', \'id\'), COALESCE((SELECT MAX("id") FROM "SiteSettings"), 1))');
@@ -492,7 +500,11 @@ export async function createPrismaStore(): Promise<ContentStore> {
     async switchSite(id: number) {
       const exists = await client.site.findUnique({ where: { id } });
       if (!exists) return null;
-      await client.site.update({ where: { id }, data: { isActive: !exists.isActive } });
+      // 活动站点唯一：先把其他站点全部置为非活动，再激活目标站点
+      await client.$transaction([
+        client.site.updateMany({ where: { id: { not: id } }, data: { isActive: false } }),
+        client.site.update({ where: { id }, data: { isActive: true } }),
+      ]);
       return mapSite((await client.site.findUnique({ where: { id } }))!);
     },
     async deleteSite(id: number) {
@@ -579,6 +591,9 @@ export async function createPrismaStore(): Promise<ContentStore> {
           marqueeText: input.marqueeText,
           reviewTags: toJsonValue(input.reviewTags),
           heroImageCount: input.heroImageCount,
+          paymentSuccessMessage: input.paymentSuccessMessage || defaultBootstrap.settings.paymentSuccessMessage,
+          customerServiceUrl: input.customerServiceUrl ?? '',
+          customerServiceQrCode: input.customerServiceQrCode?.trim() || null,
         },
       });
       return mapSettings(record);
