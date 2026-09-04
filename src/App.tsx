@@ -189,7 +189,18 @@ function titleText(settings: SiteSettings) {
   return settings.title || settings.shopName;
 }
 
-function PublicApp() {
+// 生成随机头像 URL
+function getRandomAvatar(seed: string | number) {
+  const avatars = [
+    'https://api.dicebear.com/7.x/avataaars/svg?seed=',
+    'https://api.dicebear.com/7.x/bottts/svg?seed=',
+    'https://api.dicebear.com/7.x/initials/svg?seed=',
+  ];
+  const randomIndex = (typeof seed === 'string' ? seed.charCodeAt(0) : seed) % avatars.length;
+  return `${avatars[randomIndex]}${seed}`;
+}
+
+function DRu() {
   const pathname = usePathname();
   const [bootstrap, setBootstrap] = useState<PublicBootstrap | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -205,6 +216,7 @@ function PublicApp() {
   const [queryOrderNo, setQueryOrderNo] = useState('');
   const [queryPhone, setQueryPhone] = useState('');
   const [queriedOrder, setQueriedOrder] = useState<Order | null>(null);
+  const [reviewLikes, setReviewLikes] = useState<Record<number, number>>();
 
   // 从 URL 中提取 slug（如 /shop-a）
   const slug = pathname === '/' ? undefined : pathname.slice(1);
@@ -217,6 +229,12 @@ function PublicApp() {
         setBootstrap(data);
         setSelectedSkuId(data.skus?.[0]?.skuCode ?? 'single');
         setLoadError('');
+        // 初始化点赞数据
+        const initialLikes: Record<number, number> = {};
+        data.allReviews.forEach((review) => {
+          initialLikes[review.id] = Math.floor(Math.random() * 50) + 10; // 随机10-60个赞
+        });
+        setReviewLikes(initialLikes);
       })
       .catch(() => {
         if (active) setLoadError('前台数据加载失败，请刷新后重试');
@@ -298,6 +316,13 @@ function PublicApp() {
   const floatingItem = latestItems[purchaseIndex % latestItems.length] ?? null;
 
   const showToast = (message = '订单操作完成') => setToast(message);
+  
+  const handleReviewLike = (reviewId: number) => {
+    setReviewLikes((prev) => {
+      if (!prev) return prev;
+      return { ...prev, [reviewId]: (prev[reviewId] ?? 0) + 1 };
+    });
+  };
 
   const handleCheckoutSubmit = async (recipient: CheckoutRecipient) => {
     const sku = bootstrap.skus?.find((item) => item.skuCode === selectedSku.id);
@@ -388,7 +413,7 @@ function PublicApp() {
 
         <section className="card" id="review-card">
           <button className="review-head" type="button" onClick={() => setReviewOpen(true)}>
-            <b>宝贝评价({allReviews.length})</b>
+            <b>宝贝评价(999+)</b>
             <span>查看全部 &gt;</span>
           </button>
           <div className="tags">
@@ -400,7 +425,10 @@ function PublicApp() {
           </div>
           {reviews.map((review) => (
             <article className="review" key={review.id}>
-              <div className="reviewer">{review.name}</div>
+              <div className="reviewer" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <img src={getRandomAvatar(review.id)} alt="" style={{ width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0 }} />
+                <span>{review.name}</span>
+              </div>
               <p>{review.content}</p>
               <div className="review-photos">
                 {review.images.map((image, index) => (
@@ -425,7 +453,10 @@ function PublicApp() {
           <div className="orders">
             <ul>
               {latestItems.map((item, index) => (
-                <li key={`${item.id}-${index}`}>{item.content}</li>
+                <li key={`${item.id}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <img src={getRandomAvatar(`${item.id}-${index}`)} alt="" style={{ width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0 }} />
+                  <span>{item.content}</span>
+                </li>
               ))}
             </ul>
           </div>
@@ -485,13 +516,13 @@ function PublicApp() {
 
       <div className="purchase-feed" aria-live="polite">
         <p className="purchase-item active">
-          <img src={floatingItem?.resolvedUrl ?? floatingPurchases[0]?.resolvedUrl ?? ''} alt="" />
+          {floatingItem?.content ?? floatingPurchases[0]?.content ?? ''}
         </p>
       </div>
 
       <Sheet open={reviewOpen} title="商品评论" onClose={() => setReviewOpen(false)}>
         <div className="review-sheet-body">
-          <div className="review-title-container">宝贝评价({allReviews.length})</div>
+          <div className="review-title-container">宝贝评价(999+)</div>
           <div className="review-tag-container">
             {reviewTags.map((tag) => (
               <div className="review-tag-item" key={tag}>
@@ -502,11 +533,35 @@ function PublicApp() {
           <div className="review-item-container">
             {allReviews.map((review) => (
               <div className="review-item-content" key={review.id}>
-                <div className="reviewer-row">
-                  <div>
-                    <div className="reviewer-name">{review.name}</div>
-                    <div className="reviewer-sub" />
+                <div className="reviewer-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <img src={getRandomAvatar(review.id)} alt="" style={{ width: '14px', height: '14px', borderRadius: '50%', flexShrink: 0 }} />
+                    <div>
+                      <div className="reviewer-name">{review.name}</div>
+                      <div className="reviewer-sub" style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
+                        {new Date(review.createdAt || Date.now()).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                      </div>
+                    </div>
                   </div>
+                  <button 
+                    type="button"
+                    onClick={() => handleReviewLike(review.id)}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '4px', 
+                      padding: '4px 8px', 
+                      background: '#f5f5f5', 
+                      border: 'none', 
+                      borderRadius: '12px', 
+                      fontSize: '12px', 
+                      color: '#666',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>👍</span>
+                    <span>{reviewLikes?.[review.id] ?? 0}</span>
+                  </button>
                 </div>
                 <div className="context-text">{review.content}</div>
                 <div className="sheet-review-image-row">
@@ -514,6 +569,9 @@ function PublicApp() {
                 </div>
               </div>
             ))}
+          </div>
+          <div style={{ padding: '16px', textAlign: 'center', fontSize: '13px', color: '#999' }}>
+            仅展示最近10条评论
           </div>
         </div>
       </Sheet>
