@@ -42,13 +42,15 @@ function LoadingPage() {
   );
 }
 
-function ProgressiveImage({ className, ...props }: React.ComponentProps<typeof Image>) {
+function ProgressiveImage({ className, style, ...props }: React.ComponentProps<typeof Image>) {
   return (
     <Image
       {...props}
       className={className}
       preview={false}
       placeholder={{ progress: true }}
+      fallback="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600' viewBox='0 0 600 600'%3E%3Crect width='600' height='600' fill='%23f1f2f4'/%3E%3C/svg%3E"
+      style={{ display: 'block', ...style }}
     />
   );
 }
