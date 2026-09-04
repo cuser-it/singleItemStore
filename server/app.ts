@@ -190,6 +190,7 @@ function buildOrderFilters(query: any) {
     skuId: query.skuId ? Number(query.skuId) : undefined,
     startAt: query.startAt ? String(query.startAt) : undefined,
     endAt: query.endAt ? String(query.endAt) : undefined,
+    siteId: query.siteId ? Number(query.siteId) : undefined,
   };
 }
 
@@ -588,7 +589,8 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.delete('/api/admin/media-assets/:id', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.status(await store.deleteMediaAsset(Number(req.params.id)) ? 204 : 404).end();
+    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    res.status(await store.deleteMediaAsset(Number(req.params.id), siteId) ? 204 : 404).end();
   });
 
   app.get('/api/admin/reviews', async (req, res) => {
@@ -615,7 +617,8 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.delete('/api/admin/reviews/:id', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.status(await store.deleteReview(Number(req.params.id)) ? 204 : 404).end();
+    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    res.status(await store.deleteReview(Number(req.params.id), siteId) ? 204 : 404).end();
   });
 
   app.get('/api/admin/floating-purchases', async (req, res) => {
@@ -642,7 +645,8 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.delete('/api/admin/floating-purchases/:id', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.status(await store.deleteFloatingPurchase(Number(req.params.id)) ? 204 : 404).end();
+    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    res.status(await store.deleteFloatingPurchase(Number(req.params.id), siteId) ? 204 : 404).end();
   });
 
   app.post('/api/admin/upload', (req, res) => {

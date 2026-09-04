@@ -110,8 +110,9 @@ export async function updateMediaAsset(id: number, input: Parameters<typeof crea
   });
 }
 
-export async function deleteMediaAsset(id: number) {
-  return requestJson<void>(`/api/admin/media-assets/${id}`, { method: 'DELETE' });
+export async function deleteMediaAsset(id: number, siteId?: number) {
+  const params = siteId ? `?siteId=${siteId}` : '';
+  return requestJson<void>(`/api/admin/media-assets/${id}${params}`, { method: 'DELETE' });
 }
 
 export async function createReview(input: {
@@ -135,8 +136,9 @@ export async function updateReview(id: number, input: Parameters<typeof createRe
   });
 }
 
-export async function deleteReview(id: number) {
-  return requestJson<void>(`/api/admin/reviews/${id}`, { method: 'DELETE' });
+export async function deleteReview(id: number, siteId?: number) {
+  const params = siteId ? `?siteId=${siteId}` : '';
+  return requestJson<void>(`/api/admin/reviews/${id}${params}`, { method: 'DELETE' });
 }
 
 export async function createFloatingPurchase(input: {
@@ -157,8 +159,9 @@ export async function updateFloatingPurchase(id: number, input: Parameters<typeo
   });
 }
 
-export async function deleteFloatingPurchase(id: number) {
-  return requestJson<void>(`/api/admin/floating-purchases/${id}`, { method: 'DELETE' });
+export async function deleteFloatingPurchase(id: number, siteId?: number) {
+  const params = siteId ? `?siteId=${siteId}` : '';
+  return requestJson<void>(`/api/admin/floating-purchases/${id}${params}`, { method: 'DELETE' });
 }
 
 export async function uploadAsset(file: File) {
