@@ -769,6 +769,7 @@ function AdminApp() {
     } finally {
       setLoading(false);
     }
+  };
 
   useEffect(() => {
     fetchAdminMe().then(async (ok) => {
@@ -869,6 +870,7 @@ function AdminApp() {
     } catch {
       message.error('操作失败');
     }
+  };
   const handleUploadSelected = async (file: File) => {
     try {
       const result = await uploadAsset(file);
