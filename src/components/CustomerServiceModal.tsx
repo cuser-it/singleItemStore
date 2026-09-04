@@ -5,7 +5,7 @@ export type CustomerServiceMode = 'qr-and-link' | 'qr-only' | 'link-only' | 'non
 
 /**
  * 根据后台配置决定添加客服页的布局：
- * - qr-and-link：上方二维码，下方「无法扫码？点击添加」按钮（带超链接）
+ * - qr-and-link：上方二维码，下方「点击添加」按钮（带超链接）
  * - qr-only：上方二维码，下方文字提示「长按图片识别二维码」
  * - link-only：不显示二维码占位，直接显示「点击添加客服微信」按钮
  * - none：没有任何客服配置
@@ -79,7 +79,7 @@ export default function CustomerServiceModal({ visible, qrCodeUrl, serviceLink, 
           className="cs-modal__button"
           style={{ background: '#07c160', borderColor: '#07c160', height: 48, fontSize: 16, borderRadius: 24 }}
         >
-          {mode === 'qr-and-link' ? '无法扫码？点击直接添加' : '点击添加客服微信'}
+          {mode === 'qr-and-link' ? '点击直接添加' : '点击添加客服微信'}
         </Button>
       )}
 
