@@ -25,9 +25,12 @@ export type SiteSettings = {
   shippingNote: string;
   reminder: string;
   shippingTime: string;
+  salePrice: number;
+  originalPrice: number;
   soldText: string;
   marqueeText: string;
   reviewTags: string[];
+  productVariants: ProductVariant[];
   heroImageCount: number;
   paymentSuccessMessage: string;
   customerServiceUrl: string;
@@ -237,9 +240,12 @@ export const defaultSiteSettings: SiteSettings = {
   shippingNote: '免费包邮',
   reminder: '正品保证，不仅全，而且更安全',
   shippingTime: '18:00 前下单，承诺当日发出',
+  salePrice: 99.99,
+  originalPrice: 199.99,
   soldText: '50000+已售',
   marqueeText: 'xxx购买',
   reviewTags: ['效果明显', '价格便宜', '发货快', '物流快', '服务好'],
+  productVariants: [],
   heroImageCount: 5,
   paymentSuccessMessage: '添加客服领取服用说明',
   customerServiceUrl: '',
