@@ -1,4 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
+import Image from 'antd/es/image';
+import Skeleton from 'antd/es/skeleton';
 import { CheckoutSheet, clampCheckoutQuantity, type CheckoutRecipient } from './components/CheckoutSheet';
 import { usePathname } from './hooks/usePathname';
 import type { PublicBootstrap, SiteSettings } from '../shared/site';
@@ -26,6 +28,28 @@ export function formatFulfillmentStatus(value: string) {
     SHIPPED: '已发货',
   };
   return labels[value] ?? '未知状态';
+}
+
+function LoadingPage() {
+  return (
+    <div className="store-page" aria-label="页面加载中">
+      <section className="hero"><Skeleton.Image active style={{ width: '100%', height: '100%' }} /></section>
+      <Skeleton active paragraph={{ rows: 0 }} title={{ width: '60%' }} style={{ margin: 16 }} />
+      <section className="card pad"><Skeleton active paragraph={{ rows: 4 }} /></section>
+      <section className="card pad"><Skeleton active paragraph={{ rows: 3 }} /></section>
+    </div>
+  );
+}
+
+function ProgressiveImage({ className, ...props }: React.ComponentProps<typeof Image>) {
+  return (
+    <Image
+      {...props}
+      className={className}
+      preview={false}
+      placeholder={{ progress: true }}
+    />
+  );
 }
 function Sheet({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -179,11 +203,7 @@ function DRu() {
   }
 
   if (!bootstrap) {
-    return (
-      <div className="store-page">
-        <div className="admin-loading" aria-label="页面加载中">加载中...</div>
-      </div>
-    );
+    return <LoadingPage />;
   }
 
   const settings = bootstrap.settings;
@@ -269,7 +289,7 @@ function DRu() {
           <div className="slides" style={{ transform: `translateX(${-100 * slide}%)` }}>
             {heroImages.map((image, index) => (
               <div className="slide" key={image.id}>
-                <img src={image.resolvedUrl} alt={image.alt} draggable={false} loading={index === 0 ? 'eager' : 'lazy'} fetchPriority={index === 0 ? 'high' : 'auto'} />
+                <ProgressiveImage src={image.resolvedUrl} alt={image.alt} draggable={false} loading={index === 0 ? 'eager' : 'lazy'} fetchPriority={index === 0 ? 'high' : 'auto'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             ))}
           </div>
@@ -331,7 +351,7 @@ function DRu() {
               <p>{review.content}</p>
               <div className="review-photos">
                 {review.images.map((image, index) => (
-                  <img src={image} alt={`${review.name}评价图${index + 1}`} key={`${review.id}-${index}`} loading="lazy" />
+                  <ProgressiveImage src={image} alt={`${review.name}评价图${index + 1}`} key={`${review.id}-${index}`} loading="lazy" style={{ width: '100%', height: 'auto' }} />
                 ))}
               </div>
             </article>
@@ -342,7 +362,7 @@ function DRu() {
         <section className="detail-images">
           {detailImages.map((image, index) => (
             <p key={image.id}>
-              <img src={image.resolvedUrl} alt={`详情图${index + 1}`} loading="lazy" />
+              <ProgressiveImage src={image.resolvedUrl} alt={`详情图${index + 1}`} loading="lazy" style={{ width: '100%', height: 'auto' }} />
             </p>
           ))}
         </section>
@@ -469,7 +489,7 @@ function DRu() {
                   </div>
                   <div className="context-text">{review.content}</div>
                   <div className="sheet-review-image-row">
-                    {review.images[0] ? <img src={review.images[0]} alt={`${review.name}图片评论`} loading="lazy" /> : null}
+                    {review.images[0] ? <ProgressiveImage src={review.images[0]} alt={`${review.name}图片评论`} loading="lazy" style={{ width: '100%', height: 'auto' }} /> : null}
                   </div>
                 </div>
               ))}
