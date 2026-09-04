@@ -18,3 +18,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
 });
+
+// jsdom 不支持 getComputedStyle 的第二个参数（antd 波纹动效会传入伪元素），忽略即可
+const originalGetComputedStyle = window.getComputedStyle.bind(window);
+window.getComputedStyle = ((element: Element) => originalGetComputedStyle(element)) as typeof window.getComputedStyle;

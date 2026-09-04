@@ -166,6 +166,21 @@ function buildSkuInput(body: any) {
   };
 }
 
+/** 取用户发起请求的页面 Origin（优先 Origin 头，其次 Referer），用于生成与当前访问站点一致的支付返回地址 */
+function resolveRequestOrigin(req: { headers: Record<string, string | string[] | undefined> }) {
+  const origin = req.headers.origin;
+  if (typeof origin === 'string' && origin) return origin;
+  const referer = req.headers.referer;
+  if (typeof referer === 'string' && referer) {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 function buildOrderInput(body: any) {
   return {
     skuId: Number(body.skuId),
@@ -274,7 +289,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.post('/api/public/orders', async (req, res) => {
     console.log('[DEBUG] POST /api/public/orders received, body:', req.body);
     try {
-      res.status(201).json(await orderService.createOrder(buildOrderInput(req.body)));
+      res.status(201).json(await orderService.createOrder(buildOrderInput(req.body), resolveRequestOrigin(req)));
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : 'order create failed' });
     }

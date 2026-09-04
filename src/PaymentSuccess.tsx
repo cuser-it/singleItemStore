@@ -1,159 +1,143 @@
 import { useEffect, useState } from 'react';
-import { Result, Typography, Card, Button, Skeleton, Space, Modal } from 'antd';
-import { CheckCircleOutlined, HomeOutlined, WechatOutlined } from '@ant-design/icons';
+import { Button, Modal, Skeleton } from 'antd';
+import { CheckCircleFilled, HomeOutlined, WechatOutlined } from '@ant-design/icons';
 import { fetchPaymentSuccessConfig } from './api';
-import CustomerServiceModal from './components/CustomerServiceModal';
+import CustomerServiceModal, { resolveCustomerServiceMode } from './components/CustomerServiceModal';
+import { navigateHome } from './navigation';
 
-const { Title, Paragraph, Text } = Typography;
+type PaymentSuccessConfig = { message: string; customerServiceUrl: string; customerServiceQrCode?: string };
+
+export const DEFAULT_SUCCESS_MESSAGE = '添加客服领取服用说明';
 
 export default function PaymentSuccess() {
-  const [config, setConfig] = useState<{ message: string; customerServiceUrl: string; customerServiceQrCode?: string } | null>(null);
+  const [config, setConfig] = useState<PaymentSuccessConfig | null>(null);
   const [loading, setLoading] = useState(true);
-  const [customerServiceModalVisible, setCustomerServiceModalVisible] = useState(false);
-  const [returnInterceptCount, setReturnInterceptCount] = useState(0);
+  const [serviceOpen, setServiceOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
+  // 用户是否已经点击过「添加客服」（打开过客服弹窗或点击了跳转链接）
+  const [contacted, setContacted] = useState(false);
 
   useEffect(() => {
+    let active = true;
     fetchPaymentSuccessConfig()
       .then((data) => {
-        setConfig(data);
+        if (active) setConfig(data);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (active) setConfig({ message: DEFAULT_SUCCESS_MESSAGE, customerServiceUrl: '' });
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (returnInterceptCount < 1 && (config?.customerServiceUrl || config?.customerServiceQrCode)) {
-        e.preventDefault();
-        e.returnValue = '请先添加客服微信';
-        return '请先添加客服微信';
-      }
-    };
+  const mode = resolveCustomerServiceMode(config?.customerServiceQrCode, config?.customerServiceUrl);
+  const hasCustomerService = mode !== 'none';
+  const message = config?.message || DEFAULT_SUCCESS_MESSAGE;
+  const orderNo = new URLSearchParams(window.location.search).get('orderNo');
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [returnInterceptCount, config]);
-
-  const handleOpenCustomerService = () => {
-    setCustomerServiceModalVisible(true);
+  const openCustomerService = () => {
+    setContacted(true);
+    setReminderOpen(false);
+    setServiceOpen(true);
   };
 
   const handleBackHome = () => {
-    if (returnInterceptCount < 1 && (config?.customerServiceUrl || config?.customerServiceQrCode)) {
-      Modal.confirm({
-        title: '请先添加客服微信',
-        content: '为了后续发货和售后服务，建议您先添加客服微信',
-        okText: '立即添加',
-        cancelText: '我已添加，返回首页',
-        icon: <WechatOutlined style={{ color: '#07c160' }} />,
-        onOk: () => {
-          setCustomerServiceModalVisible(true);
-        },
-        onCancel: () => {
-          setReturnInterceptCount(2);
-          window.location.href = '/';
-        }
-      });
-      setReturnInterceptCount(1);
-    } else {
-      window.location.href = '/';
+    // 未添加客服就想返回：先做一次二次提醒，不直接放行
+    if (hasCustomerService && !contacted) {
+      setReminderOpen(true);
+      return;
     }
+    navigateHome();
   };
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-        <Card style={{ maxWidth: '500px', width: '100%', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
-          <div style={{ textAlign: 'center', padding: '40px 24px' }}>
-            <Skeleton.Avatar active size={72} shape="circle" style={{ marginBottom: '24px' }} />
-            <Skeleton active paragraph={{ rows: 2 }} />
-            <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'center' }}>
-              <Skeleton.Image active style={{ width: '200px', height: '200px' }} />
-            </div>
-            <Skeleton active paragraph={{ rows: 1 }} style={{ marginTop: '24px' }} />
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  const message = config?.message || '添加客服领取服用说明';
-  const hasCustomerService = config?.customerServiceUrl || config?.customerServiceQrCode;
-  const orderNo = new URLSearchParams(window.location.search).get('orderNo');
-
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      <Card style={{ maxWidth: '500px', width: '100%', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
-        <Result
-          icon={<CheckCircleOutlined style={{ color: '#52c41a', fontSize: '72px' }} />}
-          title={<Title level={2} style={{ marginTop: '16px', marginBottom: '8px' }}>购买成功！</Title>}
-          subTitle={<Paragraph style={{ fontSize: '16px', color: '#666', marginBottom: '32px' }}>感谢您的购买，订单已提交成功</Paragraph>}
-        />
-        
-        <div style={{ textAlign: 'center', padding: '0 24px 24px' }}>
-          {orderNo && (
-            <div style={{ marginBottom: '24px', padding: '16px', background: '#f9f9f9', borderRadius: '8px' }}>
-              <Text strong style={{ fontSize: '16px' }}>订单号：</Text>
-              <Text style={{ fontSize: '18px', color: '#1890ff' }}>{orderNo}</Text>
-              <div style={{ marginTop: '8px' }}>
-                <Text type="secondary" style={{ fontSize: '12px' }}>凭订单号 + 手机号可在首页查询订单</Text>
-              </div>
+    <div className="ps-page">
+      <main className="ps-card" aria-busy={loading}>
+        {loading ? (
+          <div className="ps-loading">
+            <Skeleton.Avatar active size={72} shape="circle" />
+            <Skeleton active paragraph={{ rows: 2 }} />
+            <Skeleton.Button active block style={{ height: 48, marginTop: 12 }} />
+            <Skeleton.Button active block style={{ height: 48 }} />
+          </div>
+        ) : (
+          <>
+            <div className="ps-hero">
+              <CheckCircleFilled className="ps-hero__icon" aria-hidden="true" />
+              <h1 className="ps-hero__title">支付成功</h1>
+              <p className="ps-hero__sub">感谢您的购买，我们会尽快为您安排发货</p>
             </div>
-          )}
 
-          {hasCustomerService && (
-            <>
-              <Title level={4} style={{ marginBottom: '20px' }}>{message}</Title>
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                <Button
-                  type="primary"
-                  icon={<WechatOutlined />}
-                  size="large"
-                  onClick={handleOpenCustomerService}
-                  block
-                  style={{
-                    background: '#07c160',
-                    borderColor: '#07c160',
-                    height: '48px',
-                    fontSize: '16px',
-                    borderRadius: '24px'
-                  }}
-                >
-                  添加客服微信
-                </Button>
-                <Button
-                  icon={<HomeOutlined />}
-                  size="large"
-                  onClick={handleBackHome}
-                  block
-                  style={{ borderRadius: '24px', height: '48px' }}
-                >
-                  返回首页
-                </Button>
-              </Space>
-            </>
-          )}
+            {orderNo ? (
+              <section className="ps-order" aria-label="订单信息">
+                <div className="ps-order__row">
+                  <span>订单号</span>
+                  <b data-testid="ps-order-no">{orderNo}</b>
+                </div>
+                <p className="ps-order__hint">凭订单号 + 收货手机号可在首页底部查询订单</p>
+              </section>
+            ) : null}
 
-          {!hasCustomerService && (
-            <Button
-              icon={<HomeOutlined />}
-              size="large"
-              onClick={() => window.location.href = '/'}
-              block
-              type="primary"
-              style={{ borderRadius: '24px', height: '48px', marginTop: '16px' }}
-            >
-              返回首页
+            {hasCustomerService ? (
+              <section className="ps-guide" aria-label="客服引导">
+                <span className="ps-guide__badge">
+                  <WechatOutlined /> 重要提醒
+                </span>
+                <p className="ps-guide__text">{message}</p>
+              </section>
+            ) : null}
+          </>
+        )}
+      </main>
+
+      {!loading ? (
+        <footer className="ps-actions">
+          {hasCustomerService ? (
+            <Button type="primary" size="large" block icon={<WechatOutlined />} className="ps-btn ps-btn--primary" onClick={openCustomerService}>
+              添加客服微信
             </Button>
-          )}
+          ) : null}
+          <Button size="large" block icon={<HomeOutlined />} className={hasCustomerService ? 'ps-btn ps-btn--ghost' : 'ps-btn ps-btn--primary'} type={hasCustomerService ? 'default' : 'primary'} onClick={handleBackHome}>
+            返回首页
+          </Button>
+        </footer>
+      ) : null}
+
+      <Modal
+        open={reminderOpen}
+        centered
+        closable={false}
+        maskClosable={false}
+        width="min(340px, calc(100vw - 32px))"
+        className="ps-reminder"
+        footer={null}
+        onCancel={() => setReminderOpen(false)}
+      >
+        <div className="ps-reminder__body" role="alertdialog" aria-label="添加客服提醒">
+          <div className="ps-reminder__icon">
+            <WechatOutlined />
+          </div>
+          <h3>还没有添加客服微信</h3>
+          <p>为了顺利发货、查询物流以及获取售后服务，强烈建议您先添加客服微信。</p>
+          <Button type="primary" size="large" block className="ps-btn ps-btn--primary" icon={<WechatOutlined />} onClick={openCustomerService}>
+            立即添加客服
+          </Button>
+          <Button type="text" size="large" block className="ps-btn ps-btn--text" onClick={() => { setReminderOpen(false); navigateHome(); }}>
+            暂不添加，返回首页
+          </Button>
         </div>
-      </Card>
+      </Modal>
 
       <CustomerServiceModal
-        visible={customerServiceModalVisible}
-        onClose={() => setCustomerServiceModalVisible(false)}
+        visible={serviceOpen}
+        onClose={() => setServiceOpen(false)}
         qrCodeUrl={config?.customerServiceQrCode}
         serviceLink={config?.customerServiceUrl}
+        onContact={() => setContacted(true)}
       />
     </div>
   );

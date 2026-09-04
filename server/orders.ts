@@ -197,6 +197,40 @@ function mapLogRecord(record: { id: number; orderId: number | null; action: stri
   };
 }
 
+/**
+ * 生成支付网关的同步跳转地址（return_url）。
+ * - 域名/端口始终取自用户发起下单请求的页面 Origin，保证支付完成后跳回用户当前访问的站点（避免 5173/5174 之类端口不一致）
+ * - 后台配置的 returnUrl 只贡献路径与查询参数（可填相对路径 /payment/return，也兼容旧的绝对地址）
+ * - 没有 Origin（如服务端自测）时，退回配置值原样使用
+ */
+export function resolveReturnUrl(configured: string, requestOrigin: string | undefined, orderNo: string) {
+  const fallbackPath = '/payment/return';
+  const raw = (configured || fallbackPath).trim();
+  let origin = '';
+  if (requestOrigin) {
+    try {
+      const parsed = new URL(requestOrigin);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') origin = parsed.origin;
+    } catch {
+      origin = '';
+    }
+  }
+  let target: URL;
+  try {
+    target = new URL(raw, origin || 'http://placeholder.invalid');
+  } catch {
+    target = new URL(fallbackPath, origin || 'http://placeholder.invalid');
+  }
+  if (origin) {
+    const originUrl = new URL(origin);
+    target.protocol = originUrl.protocol;
+    target.host = originUrl.host;
+  }
+  target.searchParams.set('orderNo', orderNo);
+  if (!origin && target.hostname === 'placeholder.invalid') return `${target.pathname}${target.search}`;
+  return target.toString();
+}
+
 function signParams(params: Record<string, string>, secret: string) {
   const filtered = Object.entries(params)
     .filter(([key, value]) => key !== 'sign' && key !== 'sign_type' && value !== '')
@@ -568,17 +602,17 @@ export class OrderService {
     this.log('sku_deleted', `SKU ${sku.skuCode} deleted`, actor, undefined, { skuId: id });
     return true;
   }
-  async createOrder(input: CreateOrderInput) {
+  async createOrder(input: CreateOrderInput, requestOrigin?: string) {
     await this.ensureReady();
     const site = await this.store.getActiveSite();
     const key = input.idempotencyKey?.trim();
     const settings = await this.loadPaymentSettingsState();
     if (this.persistent && key) {
       const existing = await prismaClient.order.findFirst({ where: { siteId: site.id, idempotencyKey: key } });
-      if (existing) return this.buildPayment(mapOrderRecord(existing), settings);
+      if (existing) return this.buildPayment(mapOrderRecord(existing), settings, requestOrigin);
     } else if (!this.persistent && key) {
       const existing = this.orders.find((item) => item.siteId === site.id && item.idempotencyKey === key);
-      if (existing) return this.buildPayment(existing, settings);
+      if (existing) return this.buildPayment(existing, settings, requestOrigin);
     }
     this.validateOrderInput(input, settings.enabledChannels);
     const sku = (await this.listSkus(site.id, true)).find((item) => item.id === input.skuId);
@@ -626,7 +660,7 @@ export class OrderService {
       if (key) this.idempotency.set(`${site.id}:${key}`, order.id);
       await this.log('order_created', `Order ${order.orderNo} created`, 'system', order.id);
       this.emit({ type: 'order_created', orderId: order.id, orderNo: order.orderNo, updatedAt: order.updatedAt });
-      return this.buildPayment(order, settings);
+      return this.buildPayment(order, settings, requestOrigin);
     }
     const created = await prismaClient.order.create({
       data: {
@@ -636,7 +670,7 @@ export class OrderService {
     });
     await this.log('order_created', `Order ${created.orderNo} created`, 'system', created.id);
     this.emit({ type: 'order_created', orderId: created.id, orderNo: created.orderNo, updatedAt: created.updatedAt.toISOString() });
-    return this.buildPayment(mapOrderRecord(created), settings);
+    return this.buildPayment(mapOrderRecord(created), settings, requestOrigin);
   }
 
   async listOrders(filters: OrderFilters = {}): Promise<OrderListResult> {
@@ -950,8 +984,8 @@ export class OrderService {
     if (!enabledChannels.includes(input.paymentChannel)) throw new Error('payment channel disabled');
   }
 
-  private buildPayment(order: Order, settings = this.paymentSettings) {
-    const params = { pid: settings.merchantId, type: order.paymentChannel, out_trade_no: order.orderNo, notify_url: settings.notifyUrl, return_url: `${settings.returnUrl}?orderNo=${encodeURIComponent(order.orderNo)}`, name: order.skuName, money: order.totalAmount };
+  private buildPayment(order: Order, settings = this.paymentSettings, requestOrigin?: string) {
+    const params = { pid: settings.merchantId, type: order.paymentChannel, out_trade_no: order.orderNo, notify_url: settings.notifyUrl, return_url: resolveReturnUrl(settings.returnUrl, requestOrigin, order.orderNo), name: order.skuName, money: order.totalAmount };
     const signed = { ...params, sign: signParams(params, settings.merchantSecret ?? ''), sign_type: 'MD5' };
     const query = new URLSearchParams(signed).toString();
     return { order, paymentUrl: `${settings.gatewayUrl}?${query}`, params: signed };

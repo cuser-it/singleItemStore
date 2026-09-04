@@ -1912,3 +1912,73 @@ img {
   .co-primary { min-width: 150px; font-size: 14px; }
   .co-footer__total strong { font-size: 20px; }
 }
+
+/* ================================================================
+   支付成功页（移动端优先）
+   ================================================================ */
+.ps-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #07c160 0, #07c160 180px, #f5f6f8 180px, #f5f6f8 100%);
+}
+.ps-card {
+  flex: 1 1 auto;
+  width: min(520px, calc(100% - 24px));
+  margin: 56px auto 0;
+  padding: 24px 18px 18px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .08);
+}
+.ps-loading { display: grid; gap: 14px; justify-items: center; padding: 8px 0; }
+.ps-hero { display: grid; justify-items: center; gap: 6px; text-align: center; }
+.ps-hero__icon { font-size: 64px; color: #07c160; margin-top: -56px; background: #fff; border-radius: 50%; padding: 6px; box-shadow: 0 6px 16px rgba(7, 193, 96, .25); }
+.ps-hero__title { margin: 6px 0 0; color: #17191d; font-size: 22px; font-weight: 800; }
+.ps-hero__sub { margin: 0; color: #7a7f87; font-size: 13px; }
+.ps-order { margin-top: 20px; padding: 12px 14px; border-radius: 10px; background: #f7f8fa; }
+.ps-order__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #7a7f87; font-size: 13px; }
+.ps-order__row b { color: #17191d; font-size: 15px; word-break: break-all; text-align: right; user-select: all; }
+.ps-order__hint { margin: 8px 0 0; color: #9aa0a8; font-size: 11px; }
+.ps-guide { margin-top: 16px; padding: 14px; border-radius: 10px; border: 1px dashed #b7ebc6; background: #f0fff4; text-align: center; }
+.ps-guide__badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; background: #07c160; color: #fff; font-size: 12px; font-weight: 700; }
+.ps-guide__text { margin: 10px 0 0; color: #17191d; font-size: 15px; font-weight: 700; line-height: 1.5; }
+
+.ps-actions {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  gap: 10px;
+  width: min(520px, 100%);
+  margin: 16px auto 0;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(245, 246, 248, 0), #f5f6f8 30%);
+}
+.ps-btn.ant-btn { height: 48px; border-radius: 24px; font-size: 16px; font-weight: 700; }
+.ps-btn--primary.ant-btn-primary { background: #07c160; border-color: #07c160; box-shadow: 0 6px 16px rgba(7, 193, 96, .3); }
+.ps-btn--primary.ant-btn-primary:hover, .ps-btn--primary.ant-btn-primary:active { background: #06ad56 !important; border-color: #06ad56 !important; }
+.ps-btn--ghost.ant-btn { border-color: #dfe2e8; background: #fff; color: #6f7580; font-weight: 500; }
+.ps-btn--text.ant-btn { color: #9aa0a8; font-weight: 500; }
+
+.ps-reminder .ant-modal-content { border-radius: 16px; padding: 24px 20px 12px; }
+.ps-reminder__body { display: grid; gap: 10px; text-align: center; }
+.ps-reminder__icon { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 4px; border-radius: 50%; background: #f0fff4; color: #07c160; font-size: 30px; }
+.ps-reminder__body h3 { margin: 0; color: #17191d; font-size: 17px; font-weight: 800; }
+.ps-reminder__body p { margin: 0 0 8px; color: #6f7580; font-size: 13px; line-height: 1.6; }
+
+/* 添加客服弹窗 */
+.cs-modal .ant-modal-content { border-radius: 16px; }
+.cs-modal__title { display: block; text-align: center; font-size: 16px; font-weight: 800; }
+.cs-modal__qr { display: flex; justify-content: center; margin: 4px 0 16px; }
+.cs-modal__qr .ant-image { display: block; }
+.cs-modal__hint { margin: 0; color: #5f6570; font-size: 14px; line-height: 1.6; }
+.cs-modal__hint--sub { margin-top: 10px; color: #9aa0a8; font-size: 12px; }
+.cs-modal__button.ant-btn { display: inline-flex; align-items: center; justify-content: center; }
+
+@media (min-width: 768px) {
+  .ps-page { background: linear-gradient(180deg, #07c160 0, #07c160 220px, #f5f6f8 220px, #f5f6f8 100%); }
+  .ps-card { margin-top: 80px; padding: 28px 28px 22px; }
+  .ps-actions { position: static; grid-template-columns: 1fr 1fr; padding: 16px 0 32px; background: none; }
+  .ps-actions .ant-btn:first-child:last-child { grid-column: 1 / -1; }
+}
