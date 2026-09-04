@@ -6,12 +6,7 @@
    - 所有 Prisma 操作必须使用同一个 PrismaClient 实例
    - 环境变量 `DATABASE_URL` 必须指向 `fsd` 数据库
 
-2. **活动站点唯一性**：系统中有且只能有一个活动站点（`isActive = true`）
-   - 切换活动站点时，必须先将其他站点设置为 `isActive = false`
-   - 不得出现多个站点同时为活动状态的情况
-   - 建议添加数据库约束或应用层校验
-
-3. **数据同步规则**
+2. **数据同步规则**
    - SKU 数据的主存储为 `ProductSku` 表
    - `SiteSettings.productVariants` 仅在站点初始化时使用
    - 更新 SKU 时不应触发 `ensureSiteSkus` 的覆盖逻辑

@@ -500,9 +500,16 @@ export async function createPrismaStore(): Promise<ContentStore> {
     async switchSite(id: number) {
       const exists = await client.site.findUnique({ where: { id } });
       if (!exists) return null;
-      const updated = await client.site.update({ where: { id }, data: { isActive: !exists.isActive } });
+      
+      // 简单切换当前站点的激活状态
+      const updated = await client.site.update({ 
+        where: { id }, 
+        data: { isActive: !exists.isActive } 
+      });
+      
       return mapSite(updated);
     },
+
     async deleteSite(id: number) {
       const exists = await client.site.findUnique({ where: { id } });
       if (!exists) return false;
