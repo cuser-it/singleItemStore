@@ -1,0 +1,189 @@
+{
+  "site": {
+    "id": 1,
+    "name": "默认站点",
+    "slug": "default",
+    "isActive": true,
+    "createdAt": "2026-09-02T09:07:23.119Z",
+    "updatedAt": "2026-09-04T18:08:10.977Z"
+  },
+  "settings": {
+    "id": 1,
+    "siteId": 1,
+    "shopName": "已修改的店铺名称_Prisma",
+    "title": "标题在这里",
+    "subtitle": "副标题在这里",
+    "highlight": "立赠1盒男士战斗礼包，中西结合更强更科学",
+    "serviceNote": "免费包邮 · 18:00 前下单承诺当日发出",
+    "guarantee": [
+      "保障文案在这里"
+    ],
+    "productDescription": "描述信息在这里",
+    "shippingNote": "包邮说明在这里",
+    "reminder": "提示语在这里",
+    "shippingTime": "发货时间在这里",
+    "salePrice": 88.88,
+    "originalPrice": 299,
+    "soldText": "50000+已售",
+    "marqueeText": "活动文案",
+    "reviewTags": [
+      "评价标签在这里",
+      "一行一个",
+      "价格便宜",
+      "发货快"
+    ],
+    "productVariants": [
+      {
+        "id": "single",
+        "name": "单盒体验装",
+        "price": 88.88,
+        "subtitle": "先试用再决定",
+        "saleLabel": "券后价",
+        "originalPrice": 299
+      },
+      {
+        "id": "double",
+        "name": "2盒组合装",
+        "price": 178,
+        "subtitle": "更适合持续使用",
+        "highlight": "立减 20%",
+        "saleLabel": "组合价",
+        "originalPrice": 598
+      },
+      {
+        "id": "family",
+        "name": "3盒家庭装",
+        "price": 258,
+        "subtitle": "赠礼包装 + 优先发货",
+        "highlight": "赠礼盒",
+        "saleLabel": "限时价",
+        "originalPrice": 897
+      }
+    ],
+    "heroImageCount": 5,
+    "paymentSuccessMessage": "支付成功引导文案在这里",
+    "customerServiceUrl": "weixin://dl/business/?t=example123456",
+    "customerServiceQrCode": "http://103.236.76.222:9001/as3/uploads/0d6879a5-faf7-4f73-9563-02ead90d750e.JPEG",
+    "createdAt": "2026-09-02T07:42:05.424Z",
+    "updatedAt": "2026-09-04T18:09:56.962Z"
+  },
+  "heroImages": [
+    {
+      "id": 110,
+      "siteId": 1,
+      "section": "hero",
+      "sourceType": "upload",
+      "source": "https://cdn.example.com/hero-1.png",
+      "alt": "轮播图1",
+      "sortOrder": 1,
+      "enabled": true,
+      "resolvedUrl": "https://cdn.example.com/hero-1.png",
+      "createdAt": "2026-09-04T09:43:27.198Z",
+      "updatedAt": "2026-09-04T09:43:37.330Z"
+    }
+  ],
+  "detailImages": [
+    {
+      "id": 126,
+      "siteId": 1,
+      "section": "detail",
+      "sourceType": "upload",
+      "source": "https://cdn.example.com/detail-1.png",
+      "alt": "",
+      "sortOrder": 3,
+      "enabled": true,
+      "resolvedUrl": "https://cdn.example.com/detail-1.png",
+      "createdAt": "2026-09-04T10:45:26.435Z",
+      "updatedAt": "2026-09-04T10:45:26.435Z"
+    }
+  ],
+  "reviews": [
+    {
+      "id": 83,
+      "siteId": 1,
+      "name": "王长海",
+      "content": "收到货了，和描述基本一致，很不错",
+      "images": [
+        "https://cdn.example.com/review-1.jpg"
+      ],
+      "featuredOnHome": true,
+      "homeOrder": 2,
+      "enabled": true,
+      "createdAt": "2026-09-04T10:40:52.776Z",
+      "updatedAt": "2026-09-04T10:40:52.776Z"
+    }
+  ],
+  "allReviews": [
+    {
+      "id": 83,
+      "siteId": 1,
+      "name": "王长海",
+      "content": "使用起来很方便，整体效果超出预期",
+      "images": [
+        "https://cdn.example.com/review-detail-1.jpg"
+      ],
+      "featuredOnHome": true,
+      "homeOrder": 4,
+      "enabled": true,
+      "createdAt": "2026-09-04T10:42:30.441Z",
+      "updatedAt": "2026-09-04T10:42:30.441Z"
+    }
+  ],
+  "floatingPurchases": [
+    {
+      "id": 1,
+      "siteId": 1,
+      "content": "李**6分钟前已购买",
+      "enabled": true,
+      "sortOrder": 1,
+      "createdAt": "2026-09-02T07:42:03.812Z",
+      "updatedAt": "2026-09-03T15:11:25.117Z"
+    }
+  ],
+  "skus": [
+    {
+      "id": 1,
+      "siteId": 1,
+      "skuCode": "single",
+      "name": "单盒体验装",
+      "subtitle": "先试用再决定",
+      "price": "88.88",
+      "originalPrice": "299.00",
+      "saleLabel": "券后价",
+      "enabled": true,
+      "sortOrder": 1,
+      "createdAt": "2026-09-03T02:01:58.884Z",
+      "updatedAt": "2026-09-04T18:09:56.166Z"
+    },
+    {
+      "id": 2,
+      "siteId": 1,
+      "skuCode": "double",
+      "name": "2盒组合装",
+      "subtitle": "更适合持续使用",
+      "price": "178.00",
+      "originalPrice": "598.00",
+      "saleLabel": "组合价",
+      "highlight": "立减 20%",
+      "enabled": true,
+      "sortOrder": 2,
+      "createdAt": "2026-09-03T02:01:59.055Z",
+      "updatedAt": "2026-09-04T18:09:56.481Z"
+    },
+    {
+      "id": 3,
+      "siteId": 1,
+      "skuCode": "family",
+      "name": "3盒家庭装",
+      "subtitle": "赠礼包装 + 优先发货",
+      "price": "258.00",
+      "originalPrice": "897.00",
+      "saleLabel": "限时价",
+      "highlight": "赠礼盒",
+      "enabled": true,
+      "sortOrder": 3,
+      "createdAt": "2026-09-03T02:01:59.121Z",
+      "updatedAt": "2026-09-04T18:09:56.770Z"
+    }
+  ]
+}
