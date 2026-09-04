@@ -267,7 +267,7 @@ function DRu() {
       <main>
         <section className="hero" aria-label="商品图片">
           <div className="slides" style={{ transform: `translateX(${-100 * slide}%)` }}>
-            {heroImages.map((image) => (
+            {heroImages.map((image, index) => (
               <div className="slide" key={image.id}>
                 <img src={image.resolvedUrl} alt={image.alt} draggable={false} loading={index === 0 ? 'eager' : 'lazy'} fetchPriority={index === 0 ? 'high' : 'auto'} />
               </div>
