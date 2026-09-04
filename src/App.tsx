@@ -1539,5 +1539,5 @@ export function App() {
     return <PaymentSuccess />;
   }
 
-  return <PublicApp />;
+  return <DRu />;
 }
