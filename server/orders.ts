@@ -536,6 +536,39 @@ export class OrderService {
     return true;
   }
 
+  async enableSku(id: number, actor = 'admin') {
+    if (!this.persistent) {
+      const site = await this.store.getActiveSite();
+      const skus = await this.ensureSiteSkus(site.id);
+      const index = skus.findIndex((sku) => sku.id === id);
+      if (index < 0) return false;
+      skus[index] = { ...skus[index], enabled: true, updatedAt: nowIso() };
+      this.log('sku_enabled', `SKU ${skus[index].skuCode} enabled`, actor, undefined, { skuId: id });
+      return true;
+    }
+    const updated = await prismaClient.productSku.update({ where: { id }, data: { enabled: true } }).catch(() => null);
+    if (!updated) return false;
+    this.log('sku_enabled', `SKU ${updated.skuCode} enabled`, actor, undefined, { skuId: id });
+    return true;
+  }
+
+  async deleteSku(id: number, actor = 'admin') {
+    if (!this.persistent) {
+      const site = await this.store.getActiveSite();
+      const skus = await this.ensureSiteSkus(site.id);
+      const index = skus.findIndex((sku) => sku.id === id);
+      if (index < 0) return false;
+      const sku = skus[index];
+      skus.splice(index, 1);
+      this.log('sku_deleted', `SKU ${sku.skuCode} deleted`, actor, undefined, { skuId: id });
+      return true;
+    }
+    const sku = await prismaClient.productSku.findUnique({ where: { id } });
+    if (!sku) return false;
+    await prismaClient.productSku.delete({ where: { id } });
+    this.log('sku_deleted', `SKU ${sku.skuCode} deleted`, actor, undefined, { skuId: id });
+    return true;
+  }
   async createOrder(input: CreateOrderInput) {
     await this.ensureReady();
     const site = await this.store.getActiveSite();

@@ -385,9 +385,19 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  app.delete('/api/admin/skus/:id', async (req, res) => {
+  app.patch('/api/admin/skus/:id/enable', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    res.status(await orderService.enableSku(Number(req.params.id)) ? 204 : 404).end();
+  });
+
+  app.patch('/api/admin/skus/:id/disable', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     res.status(await orderService.disableSku(Number(req.params.id)) ? 204 : 404).end();
+  });
+
+  app.delete('/api/admin/skus/:id', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    res.status(await orderService.deleteSku(Number(req.params.id)) ? 204 : 404).end();
   });
 
   app.get('/api/admin/orders/events', (req, res) => {

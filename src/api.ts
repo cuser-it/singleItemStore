@@ -189,6 +189,14 @@ export async function updateSku(id: number, input: ProductSkuInput) {
   });
 }
 
+export async function enableSku(id: number) {
+  return requestJson<void>(`/api/admin/skus/${id}/enable`, { method: 'PATCH' });
+}
+
+export async function disableSku(id: number) {
+  return requestJson<void>(`/api/admin/skus/${id}/disable`, { method: 'PATCH' });
+}
+
 export async function deleteSku(id: number) {
   return requestJson<void>(`/api/admin/skus/${id}`, { method: 'DELETE' });
 }
