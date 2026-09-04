@@ -170,10 +170,10 @@ function PriceBanner({ sku }: { sku: { id: string; name: string; subtitle: strin
         <path d="M0 2H420L390 102H0Z" fill="#4300E8" />
         <g fill="#FFFFFF" fontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
           <text x="19" y="40" fontSize="18" fontWeight="700">
-            {sku.saleLabel}
+            原价
           </text>
           <text x="19" y="79" fontSize="22" fontWeight="700">
-            ¥{sku.price.toFixed(1)}
+            ¥{sku.originalPrice.toFixed(1)}
           </text>
         </g>
         <g fontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
@@ -183,7 +183,7 @@ function PriceBanner({ sku }: { sku: { id: string; name: string; subtitle: strin
           </text>
           <rect x="120" y="53" width="130" height="34" rx="17" fill="#FFFFFF" />
           <text x="185" y="76" fill="#FF315F" fontSize="16" fontWeight="700" textAnchor="middle">
-            划线¥{sku.originalPrice.toFixed(1)}
+            {sku.saleLabel}¥{sku.price.toFixed(1)}
           </text>
         </g>
         <g fill="#FFFFFF" textAnchor="middle" fontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
