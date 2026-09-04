@@ -237,7 +237,7 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
         heroImages: mediaAssets.filter((item) => item.section === 'hero').slice(0, 15),
         detailImages: mediaAssets.filter((item) => item.section === 'detail'),
         reviews: topReviews(reviews).slice(0, 2),
-        allReviews: [...reviews].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        allReviews: [...reviews].filter((review) => review.enabled).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
         floatingPurchases: sortByOrder(scoped(state.floatingPurchases, site.id)).filter((item) => item.enabled),
       };
     },
@@ -245,10 +245,12 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       const bootstrap = await this.getBootstrap(siteId);
       const resolvedSiteId = bootstrap.site.id;
       const mediaAssets = await this.listMediaAssets(undefined, resolvedSiteId);
+      const allReviews = await this.listReviews(resolvedSiteId);
       return {
         ...bootstrap,
         heroImages: mediaAssets.filter((item) => item.section === 'hero'),
         detailImages: mediaAssets.filter((item) => item.section === 'detail'),
+        allReviews,
         floatingPurchases: await this.listFloatingPurchases(resolvedSiteId),
         authenticated: true,
         sites: await this.listSites(),
