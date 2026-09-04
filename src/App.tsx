@@ -124,9 +124,20 @@ function getRandomAvatar(seed: string | number) {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
+function readCachedBootstrap(slug: string | undefined): PublicBootstrap | null {
+  try {
+    const raw = sessionStorage.getItem(`public-bootstrap:${slug || '__default__'}`);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as { savedAt: number; data: PublicBootstrap };
+    return Date.now() - cached.savedAt < 30_000 ? cached.data : null;
+  } catch {
+    return null;
+  }
+}
+
 function DRu() {
   const pathname = usePathname();
-  const [bootstrap, setBootstrap] = useState<PublicBootstrap | null>(null);
+  const [bootstrap, setBootstrap] = useState<PublicBootstrap | null>(() => readCachedBootstrap(pathname === '/' ? undefined : pathname.slice(1)));
   const [loadError, setLoadError] = useState('');
   const [slide, setSlide] = useState(0);
   const [selectedSkuId, setSelectedSkuId] = useState('single');
@@ -151,6 +162,7 @@ function DRu() {
       .then((data) => {
         if (!active) return;
         setBootstrap(data);
+        sessionStorage.setItem(`public-bootstrap:${slug || '__default__'}`, JSON.stringify({ savedAt: Date.now(), data }));
         setSelectedSkuId(data.skus?.[0]?.skuCode ?? 'single');
         setLoadError('');
         // 初始化点赞数据
