@@ -28,7 +28,7 @@ export type ContentStore = {
   deleteSite: (id: number) => Promise<boolean>;
   switchSite: (id: number) => Promise<Site | null>;
   getBootstrap: (siteId?: number) => Promise<PublicBootstrap>;
-  getAdminBootstrap: () => Promise<AdminBootstrap>;
+  getAdminBootstrap: (siteId?: number) => Promise<AdminBootstrap>;
   getSiteSettings: (siteId?: number) => Promise<SiteSettings>;
   updateSiteSettings: (input: SiteSettingsUpdateInput, siteId?: number) => Promise<SiteSettings>;
   listMediaAssets: (section?: MediaSection, siteId?: number) => Promise<MediaAsset[]>;
@@ -241,15 +241,15 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
         floatingPurchases: sortByOrder(scoped(state.floatingPurchases, site.id)).filter((item) => item.enabled),
       };
     },
-    async getAdminBootstrap() {
-      const bootstrap = await this.getBootstrap();
-      const siteId = bootstrap.site.id;
-      const mediaAssets = await this.listMediaAssets(undefined, siteId);
+    async getAdminBootstrap(siteId?: number) {
+      const bootstrap = await this.getBootstrap(siteId);
+      const resolvedSiteId = bootstrap.site.id;
+      const mediaAssets = await this.listMediaAssets(undefined, resolvedSiteId);
       return {
         ...bootstrap,
         heroImages: mediaAssets.filter((item) => item.section === 'hero'),
         detailImages: mediaAssets.filter((item) => item.section === 'detail'),
-        floatingPurchases: await this.listFloatingPurchases(siteId),
+        floatingPurchases: await this.listFloatingPurchases(resolvedSiteId),
         authenticated: true,
         sites: await this.listSites(),
         activeSiteId: bootstrap.site.id,

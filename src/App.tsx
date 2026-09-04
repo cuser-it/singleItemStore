@@ -748,19 +748,16 @@ function AdminApp() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const [data, skuData, orderData, payData] = await Promise.all([fetchAdminBootstrap(), fetchAdminSkus(currentSiteId ?? undefined), fetchAdminOrders(buildOrderParams()), fetchPaymentSettings(currentSiteId ?? undefined)]);
+      const [data, skuData, orderData, payData] = await Promise.all([fetchAdminBootstrap(currentSiteId ?? undefined), fetchAdminSkus(currentSiteId ?? undefined), fetchAdminOrders(buildOrderParams()), fetchPaymentSettings(currentSiteId ?? undefined)]);
       setBootstrap(data);
       
       // 初始化时设置默认站点
       if (currentSiteId === null && data.sites.length > 0) {
         const defaultSite = data.sites.find(s => s.isActive) ?? data.sites[0];
         setCurrentSiteId(defaultSite.id);
-        setSettings(data.settings);
-      } else if (currentSiteId !== null) {
-        // 切换站点后重新获取对应站点的配置
-        const siteSettings = await fetchSiteSettings(currentSiteId);
-        setSettings(siteSettings);
       }
+      
+      setSettings(data.settings);
       
       setSkus(skuData);
       setOrders(orderData.items);

@@ -535,12 +535,12 @@ export async function createPrismaStore(): Promise<ContentStore> {
         floatingPurchases: floatingPurchases.filter((item) => item.enabled).map(mapFloatingPurchase),
       };
     },
-    async getAdminBootstrap() {
-      const bootstrap = await this.getBootstrap();
-      const siteId = bootstrap.site.id;
+    async getAdminBootstrap(siteId?: number) {
+      const bootstrap = await this.getBootstrap(siteId);
+      const resolvedSiteId = bootstrap.site.id;
       const [mediaAssets, floatingPurchases] = await Promise.all([
-        this.listMediaAssets(undefined, siteId),
-        this.listFloatingPurchases(siteId),
+        this.listMediaAssets(undefined, resolvedSiteId),
+        this.listFloatingPurchases(resolvedSiteId),
       ]);
       return {
         ...bootstrap,

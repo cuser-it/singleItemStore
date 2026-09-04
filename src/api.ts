@@ -35,8 +35,9 @@ export async function fetchPublicBootstrap(slug?: string) {
   return requestJson<PublicBootstrap>(url);
 }
 
-export async function fetchAdminBootstrap() {
-  return requestJson<AdminBootstrap>('/api/admin/bootstrap');
+export async function fetchAdminBootstrap(siteId?: number) {
+  const params = siteId ? `?siteId=${siteId}` : '';
+  return requestJson<AdminBootstrap>(`/api/admin/bootstrap${params}`);
 }
 
 export async function fetchAdminMe() {

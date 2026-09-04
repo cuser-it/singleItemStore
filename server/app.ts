@@ -486,7 +486,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   app.get('/api/admin/bootstrap', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.json(await store.getAdminBootstrap());
+    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    res.json(await store.getAdminBootstrap(siteId));
   });
 
   app.get('/api/admin/sites', async (req, res) => {
