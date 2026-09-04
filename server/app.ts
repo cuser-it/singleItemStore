@@ -473,8 +473,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     if (!ensureAuthed(req, res, sessions)) return;
     try {
       res.status(201).json(await store.createSite(buildSiteInput(req.body)));
-    } catch {
-      res.status(400).json({ message: 'site create failed' });
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : 'site create failed' });
     }
   });
 

@@ -386,6 +386,8 @@ async function duplicateSiteContent(templateSiteId: number, newSiteId: number) {
         reviewTags: toJsonValue(settings.reviewTags as unknown),
         productVariants: toJsonValue(settings.productVariants as unknown),
         heroImageCount: settings.heroImageCount,
+        paymentSuccessMessage: '添加客服领取服用说明',
+        customerServiceUrl: '',
       },
     });
     return;
@@ -413,6 +415,9 @@ async function duplicateSiteContent(templateSiteId: number, newSiteId: number) {
       reviewTags: toJsonValue(templateSettings.reviewTags as unknown),
       productVariants: toJsonValue(templateSettings.productVariants as unknown),
       heroImageCount: templateSettings.heroImageCount,
+      paymentSuccessMessage: templateSettings.paymentSuccessMessage,
+      customerServiceUrl: templateSettings.customerServiceUrl,
+      customerServiceQrCode: templateSettings.customerServiceQrCode,
     },
   });
 
@@ -469,6 +474,10 @@ export async function createPrismaStore(): Promise<ContentStore> {
         return mapSite(record);
       } catch (error) {
         console.error('[createSite] Error:', error);
+        // Prisma unique constraint violation
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+          throw new Error('站点标识已存在，请使用不同的标识');
+        }
         throw error;
       }
     },

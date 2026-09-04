@@ -835,8 +835,8 @@ function AdminApp() {
       }
       closeDrawer();
       await refresh();
-    } catch {
-      message.error('站点保存失败，请检查名称或标识是否重复');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '站点保存失败，请检查名称或标识是否重复');
     }
   };
   const handleActivateSite = async (site: Site) => {
