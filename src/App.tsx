@@ -26,6 +26,7 @@ import {
   Checkbox,
 } from 'antd';
 import { OrderExportModal } from './components/OrderExportModal';
+import { CheckoutSheet, clampCheckoutQuantity, type CheckoutRecipient } from './components/CheckoutSheet';
 import type { ColumnsType } from 'antd/es/table';
 import {
   AppstoreOutlined,
@@ -124,10 +125,6 @@ function usePathname() {
 }
 
 
-function clampQty(value: number) {
-  return Math.max(1, value);
-}
-
 function Sheet({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <>
@@ -142,20 +139,6 @@ function Sheet({ open, title, onClose, children }: { open: boolean; title: strin
         {children}
       </aside>
     </>
-  );
-}
-
-function Stepper({ value, onDecrease, onIncrease, className = 'stepper' }: { value: number; onDecrease: () => void; onIncrease: () => void; className?: string }) {
-  return (
-    <div className={className}>
-      <button type="button" onClick={onDecrease} aria-label="减少数量">
-        -
-      </button>
-      <span>{value}</span>
-      <button type="button" onClick={onIncrease} aria-label="增加数量">
-        +
-      </button>
-    </div>
   );
 }
 
@@ -216,6 +199,7 @@ function PublicApp() {
   const [checkoutPayment, setCheckoutPayment] = useState<'wxpay' | 'alipay'>('wxpay');
   const [reviewOpen, setReviewOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
   const [toast, setToast] = useState('');
   const [purchaseIndex, setPurchaseIndex] = useState(0);
   const [queryOrderNo, setQueryOrderNo] = useState('');
@@ -304,7 +288,6 @@ function PublicApp() {
     originalPrice: 299,
     saleLabel: '券后价',
   };
-  const total = selectedSku.price * quantity;
   const reviewTags = settings.reviewTags;
   const heroImages = bootstrap.heroImages;
   const detailImages = bootstrap.detailImages;
@@ -316,30 +299,31 @@ function PublicApp() {
 
   const showToast = (message = '订单操作完成') => setToast(message);
 
-  const handleCheckoutSubmit = async () => {
+  const handleCheckoutSubmit = async (recipient: CheckoutRecipient) => {
     const sku = bootstrap.skus?.find((item) => item.skuCode === selectedSku.id);
     if (!sku) {
       showToast('当前规格暂不可下单');
       return;
     }
-    const recipientName = (document.getElementById('checkoutName') as HTMLInputElement | null)?.value.trim() ?? '';
-    const phone = (document.getElementById('checkoutPhone') as HTMLInputElement | null)?.value.trim() ?? '';
-    const address = (document.getElementById('checkoutAddress') as HTMLTextAreaElement | null)?.value.trim() ?? '';
+    // 只提交 skuId 与数量，金额由后台按 SKU 单价重新计算并在支付回调中校验
+    setCheckoutSubmitting(true);
     try {
       const result = await createOrder({
         skuId: sku.id,
-        quantity,
-        recipientName,
-        phone,
-        address,
+        quantity: clampCheckoutQuantity(quantity),
+        recipientName: recipient.recipientName,
+        phone: recipient.phone,
+        address: recipient.address,
         paymentChannel: checkoutPayment,
-        idempotencyKey: `${phone}-${sku.id}-${quantity}`,
+        idempotencyKey: `${recipient.phone}-${sku.id}-${quantity}`,
       });
       setCheckoutOpen(false);
       showToast(`订单 ${result.order.orderNo} 已创建，正在打开支付`);
       window.open(result.paymentUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
       showToast(error instanceof Error ? error.message : '订单提交失败');
+    } finally {
+      setCheckoutSubmitting(false);
     }
   };
 
@@ -534,88 +518,26 @@ function PublicApp() {
         </div>
       </Sheet>
 
-      <Sheet open={checkoutOpen} title="确认订单" onClose={() => setCheckoutOpen(false)}>
-        <div className="checkout-sheet-body checkout-redesign">
-          <section className="checkout-product-panel">
-            <div className="checkout-product-main">
-              <div className="checkout-product-kicker">{settings.shopName}</div>
-              <h3>{titleText(settings)}</h3>
-              <p>{settings.subtitle}</p>
-            </div>
-            <div className="checkout-price-stack">
-              <span>{selectedSku.saleLabel}</span>
-              <strong>¥{selectedSku.price.toFixed(2)}</strong>
-              <del>¥{selectedSku.originalPrice.toFixed(2)}</del>
-            </div>
-          </section>
-
-          <section className="checkout-section">
-            <div className="checkout-section-title">选择规格</div>
-            <div className="checkout-spec-grid">
-              {liveSkus.map((sku) => (
-                <button key={sku.id} className={sku.skuCode === selectedSkuId ? 'checkout-spec-card active' : 'checkout-spec-card'} type="button" onClick={() => setSelectedSkuId(sku.skuCode)}>
-                  <span>{sku.name}</span>
-                  <small>{sku.subtitle}</small>
-                  <b>¥{Number(sku.price).toFixed(2)}</b>
-                  {sku.highlight ? <em>{sku.highlight}</em> : null}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="checkout-section checkout-quantity-line">
-            <div>
-              <div className="checkout-section-title">购买数量</div>
-              <span className="checkout-muted">最多 99 件，按当前 SKU 单价结算</span>
-            </div>
-            <Stepper value={quantity} onDecrease={() => setQuantity((current) => clampQty(current - 1))} onIncrease={() => setQuantity((current) => Math.min(99, current + 1))} className="checkout-stepper" />
-          </section>
-
-          <section className="checkout-section checkout-info-grid">
-            <div><b>产品描述</b><span>{settings.productDescription}</span></div>
-            <div><b>邮费说明</b><span>{settings.shippingNote}</span></div>
-            <div><b>发货时间</b><span>{settings.shippingTime}</span></div>
-            <div><b>温馨提示</b><span>{settings.reminder}</span></div>
-          </section>
-
-          <section className="checkout-section checkout-guarantees">
-            {settings.guarantee.map((item) => <span key={item}>{item}</span>)}
-          </section>
-
-          <section className="checkout-section checkout-recipient-form">
-            <div className="checkout-section-title">收货信息</div>
-            <label htmlFor="checkoutName">姓名<input id="checkoutName" name="checkoutName" placeholder="请填写姓名" /></label>
-            <label htmlFor="checkoutPhone">手机号码<input id="checkoutPhone" name="checkoutPhone" inputMode="tel" maxLength={11} placeholder="请填写手机号码" /></label>
-            <label htmlFor="checkoutAddress">收货地址<textarea id="checkoutAddress" name="checkoutAddress" placeholder="请填写收货地址" /></label>
-          </section>
-
-          <section className="checkout-section">
-            <div className="checkout-section-title">支付方式</div>
-            <div className="checkout-payments">
-              <button className={checkoutPayment === 'wxpay' ? 'checkout-pay active' : 'checkout-pay'} type="button" onClick={() => setCheckoutPayment('wxpay')}>微信支付</button>
-              <button className={checkoutPayment === 'alipay' ? 'checkout-pay active' : 'checkout-pay'} type="button" onClick={() => setCheckoutPayment('alipay')}>支付宝支付</button>
-            </div>
-          </section>
-
-          <section className="checkout-section checkout-total-panel">
-            <div><span>商品单价</span><b>¥{selectedSku.price.toFixed(2)}</b></div>
-            <div><span>数量</span><b>x {quantity}</b></div>
-            <div><span>运费</span><b>{settings.shippingNote}</b></div>
-            <div className="checkout-total-row"><span>应付合计</span><strong>¥{total.toFixed(2)}</strong></div>
-          </section>
-        </div>
-        <div className="checkout-actions">
-          <button
-            className="checkout-submit"
-            type="button"
-            onClick={() => {
-              void handleCheckoutSubmit();
-            }}
-          >
-            提交订单
-          </button>
-        </div>
-      </Sheet>
+      <CheckoutSheet
+        open={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        title={titleText(settings)}
+        shopName={settings.shopName}
+        heroImage={heroImages[0] ? { url: heroImages[0].resolvedUrl, alt: heroImages[0].alt } : null}
+        skus={liveSkus}
+        selectedSkuCode={selectedSku.id}
+        onSelectSku={setSelectedSkuId}
+        quantity={quantity}
+        onQuantityChange={(next) => setQuantity(clampCheckoutQuantity(next))}
+        guarantee={settings.guarantee}
+        serviceNote={settings.serviceNote}
+        shippingNote={settings.shippingNote}
+        shippingTime={settings.shippingTime}
+        paymentChannel={checkoutPayment}
+        onPaymentChannelChange={setCheckoutPayment}
+        onSubmit={handleCheckoutSubmit}
+        submitting={checkoutSubmitting}
+      />
 
       <nav className="bottom-bar">
         <button className="buy-now" type="button" onClick={() => setCheckoutOpen(true)}>
