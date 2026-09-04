@@ -265,6 +265,7 @@ export async function exportOrders(params: URLSearchParams) {
   return response.blob();
 }
 
-export async function fetchPaymentSuccessConfig() {
-  return requestJson<{ message: string; customerServiceUrl: string; customerServiceQrCode?: string }>('/api/public/payment-success-config');
+export async function fetchPaymentSuccessConfig(orderNo?: string | null) {
+  const params = orderNo ? `?orderNo=${encodeURIComponent(orderNo)}` : '';
+  return requestJson<{ message: string; customerServiceUrl: string; customerServiceQrCode?: string }>(`/api/public/payment-success-config${params}`);
 }

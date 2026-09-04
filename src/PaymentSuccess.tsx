@@ -17,9 +17,11 @@ export default function PaymentSuccess() {
   // 用户是否已经点击过「添加客服」（打开过客服弹窗或点击了跳转链接）
   const [contacted, setContacted] = useState(false);
 
+  const orderNo = new URLSearchParams(window.location.search).get('orderNo');
+
   useEffect(() => {
     let active = true;
-    fetchPaymentSuccessConfig()
+    fetchPaymentSuccessConfig(orderNo)
       .then((data) => {
         if (active) setConfig(data);
       })
@@ -32,12 +34,11 @@ export default function PaymentSuccess() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [orderNo]);
 
   const mode = resolveCustomerServiceMode(config?.customerServiceQrCode, config?.customerServiceUrl);
   const hasCustomerService = mode !== 'none';
   const message = config?.message || DEFAULT_SUCCESS_MESSAGE;
-  const orderNo = new URLSearchParams(window.location.search).get('orderNo');
 
   const openCustomerService = () => {
     setContacted(true);

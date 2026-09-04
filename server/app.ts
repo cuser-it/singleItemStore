@@ -187,6 +187,7 @@ function resolveRequestOrigin(req: { headers: Record<string, string | string[] |
 
 function buildOrderInput(body: any) {
   return {
+    siteId: body.siteId ? Number(body.siteId) : undefined,
     skuId: Number(body.skuId),
     quantity: Number(body.quantity),
     recipientName: String(body.recipientName ?? '').trim(),
@@ -312,15 +313,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  app.get('/api/public/payment-success-config', async (_req, res) => {
+  app.get('/api/public/payment-success-config', async (req, res) => {
     try {
-      // 不传 siteId 即取当前活动站点的配置
-      const settings = await store.getSiteSettings();
-      res.json({
-        message: settings.paymentSuccessMessage || '添加客服领取服用说明',
-        customerServiceUrl: settings.customerServiceUrl || '',
-        customerServiceQrCode: settings.customerServiceQrCode || undefined,
-      });
+      res.json(await orderService.getPaymentSuccessConfig(req.query.orderNo ? String(req.query.orderNo) : undefined));
     } catch (error) {
       console.error('[payment-success-config] failed:', error);
       res.status(500).json({ message: 'failed to fetch config' });

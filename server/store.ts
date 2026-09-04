@@ -202,7 +202,7 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
     async switchSite(id) {
       const site = state.sites.find((item) => item.id === id);
       if (!site) return null;
-      state.sites = state.sites.map((item) => ({ ...item, isActive: item.id === id, updatedAt: item.id === id ? new Date().toISOString() : item.updatedAt }));
+      state.sites = state.sites.map((item) => (item.id === id ? { ...item, isActive: !item.isActive, updatedAt: new Date().toISOString() } : item));
       return clone(state.sites.find((item) => item.id === id)!);
     },
     async deleteSite(id) {

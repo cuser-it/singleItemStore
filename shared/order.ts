@@ -63,6 +63,7 @@ export type Order = {
 };
 
 export type CreateOrderInput = {
+  siteId?: number;
   skuId: number;
   quantity: number;
   recipientName: string;

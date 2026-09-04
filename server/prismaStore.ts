@@ -262,7 +262,7 @@ async function ensureSchema() {
 async function ensureSeed() {
   await ensureSchema();
 
-  // 默认站点只在首次创建时激活；已有活动站点时不得再次强制激活（保证活动站点唯一）
+  // 默认站点只在首次创建时激活；已有活动站点时不改变其他站点状态
   const hasActiveSite = (await client.site.count({ where: { isActive: true } })) > 0;
   const defaultSite = await client.site.upsert({
     where: { slug: defaultBootstrap.site.slug },
@@ -500,12 +500,8 @@ export async function createPrismaStore(): Promise<ContentStore> {
     async switchSite(id: number) {
       const exists = await client.site.findUnique({ where: { id } });
       if (!exists) return null;
-      // 活动站点唯一：先把其他站点全部置为非活动，再激活目标站点
-      await client.$transaction([
-        client.site.updateMany({ where: { id: { not: id } }, data: { isActive: false } }),
-        client.site.update({ where: { id }, data: { isActive: true } }),
-      ]);
-      return mapSite((await client.site.findUnique({ where: { id } }))!);
+      const updated = await client.site.update({ where: { id }, data: { isActive: !exists.isActive } });
+      return mapSite(updated);
     },
     async deleteSite(id: number) {
       const exists = await client.site.findUnique({ where: { id } });

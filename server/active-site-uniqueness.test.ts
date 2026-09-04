@@ -13,23 +13,20 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // 恢复：删除测试站点，并把原本的第一个活动站点恢复为唯一活动站点
+  // 恢复：删除测试站点，并恢复原本的活动站点集合
   if (createdSiteId) {
     await prisma.siteSettings.deleteMany({ where: { siteId: createdSiteId } });
     await prisma.productSku.deleteMany({ where: { siteId: createdSiteId } }).catch(() => undefined);
     await prisma.site.delete({ where: { id: createdSiteId } }).catch(() => undefined);
   }
-  const restoreId = originalActiveIds[0];
-  if (restoreId) {
-    await prisma.$transaction([
-      prisma.site.updateMany({ data: { isActive: false } }),
-      prisma.site.update({ where: { id: restoreId }, data: { isActive: true } }),
-    ]);
+  await prisma.site.updateMany({ data: { isActive: false } });
+  if (originalActiveIds.length) {
+    await prisma.site.updateMany({ where: { id: { in: originalActiveIds } }, data: { isActive: true } });
   }
   await prisma.$disconnect();
 });
 
-describe('Prisma 存储：客服配置字段与活动站点唯一性', () => {
+describe('Prisma 存储：客服配置字段与多活动站点', () => {
   it('updateSiteSettings 应写入并读回 paymentSuccessMessage / customerServiceUrl / customerServiceQrCode', async () => {
     const active = await store.getActiveSite();
     const before = await store.getSiteSettings(active.id);
@@ -49,12 +46,17 @@ describe('Prisma 存储：客服配置字段与活动站点唯一性', () => {
     }
   });
 
-  it('switchSite 激活一个站点后，数据库中必须只有一个 isActive = true', async () => {
-    const created = await store.createSite({ name: `唯一性测试_${Date.now()}`, slug: `uniq-${Date.now()}` });
+  it('switchSite 切换单个站点启用状态时，不会关闭其他已启用站点', async () => {
+    const existingActiveIds = (await prisma.site.findMany({ where: { isActive: true }, select: { id: true } })).map((s) => s.id);
+    expect(existingActiveIds.length).toBeGreaterThan(0);
+    const created = await store.createSite({ name: `多活动站点测试_${Date.now()}`, slug: `multi-active-${Date.now()}` });
     createdSiteId = created.id;
-    await store.switchSite(created.id);
-    const actives = await prisma.site.findMany({ where: { isActive: true } });
-    expect(actives.map((s) => s.id)).toEqual([created.id]);
-    expect((await store.getActiveSite()).id).toBe(created.id);
+
+    const activated = await store.switchSite(created.id);
+    expect(activated?.isActive).toBe(true);
+
+    const actives = await prisma.site.findMany({ where: { isActive: true }, orderBy: { id: 'asc' } });
+    expect(actives.map((s) => s.id)).toEqual([...existingActiveIds, created.id].sort((a, b) => a - b));
+    expect((await store.getSiteBySlug(created.slug))?.isActive).toBe(true);
   });
 });

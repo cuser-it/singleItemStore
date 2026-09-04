@@ -204,7 +204,7 @@ describe('backend', () => {
     const tail = detailImages.slice(-2).map((item) => item.sortOrder);
     expect(tail).toEqual([99, 100]);
   });
-  it('copies a site template and keeps site content isolated after switching', async () => {
+  it('copies a site template and keeps site content isolated for active slugs', async () => {
     await login();
 
     const createResponse = await fetch(`${baseUrl}/api/admin/sites`, {
@@ -216,19 +216,21 @@ describe('backend', () => {
     const createdSite = (await createResponse.json()) as { id: number; name: string; isActive: boolean };
     expect(createdSite.isActive).toBe(false);
 
-    const switchResponse = await fetch(`${baseUrl}/api/admin/sites/${createdSite.id}/activate`, {
+    const activateResponse = await fetch(`${baseUrl}/api/admin/sites/${createdSite.id}/activate`, {
       method: 'POST',
       headers: { cookie: authCookie },
     });
-    expect(switchResponse.status).toBe(200);
+    expect(activateResponse.status).toBe(200);
+    await expect(activateResponse.json()).resolves.toMatchObject({ id: createdSite.id, isActive: true });
 
-    const secondBootstrap = await fetch(`${baseUrl}/api/admin/bootstrap`, { headers: { cookie: authCookie } }).then((response) => response.json()) as {
+    const secondBootstrap = await fetch(`${baseUrl}/api/admin/bootstrap?siteId=${createdSite.id}`, { headers: { cookie: authCookie } }).then((response) => response.json()) as {
       activeSiteId: number;
       sites: Array<{ id: number; isActive: boolean }>;
       settings: { siteId: number; shopName: string };
       detailImages: Array<{ id: number; siteId: number; source: string }>;
     };
     expect(secondBootstrap.activeSiteId).toBe(createdSite.id);
+    expect(secondBootstrap.sites.filter((site) => site.isActive).map((site) => site.id).sort((a, b) => a - b)).toEqual([1, createdSite.id]);
     expect(secondBootstrap.settings.siteId).toBe(createdSite.id);
     expect(secondBootstrap.detailImages.every((item) => item.siteId === createdSite.id)).toBe(true);
 
@@ -238,15 +240,16 @@ describe('backend', () => {
     await fetch(`${baseUrl}/api/admin/site-settings`, {
       method: 'PUT',
       headers: { cookie: authCookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...defaultSettingsPayload(), shopName: '第二站点店铺' }),
+      body: JSON.stringify({ ...defaultSettingsPayload(), siteId: createdSite.id, shopName: '第二站点店铺' }),
     });
 
-    const secondDetailImages = await fetch(`${baseUrl}/api/public/detail-images`).then((response) => response.json()) as Array<{ siteId: number; source: string }>;
-    expect(secondDetailImages.every((item) => item.siteId === createdSite.id)).toBe(true);
-    expect(secondDetailImages.length).toBe(secondBootstrap.detailImages.length - 1);
+    const secondPublic = await fetch(`${baseUrl}/api/public/bootstrap?slug=second-site`).then((response) => response.json()) as { settings: { siteId: number; shopName: string }; detailImages: Array<{ siteId: number }> };
+    expect(secondPublic.settings.siteId).toBe(createdSite.id);
+    expect(secondPublic.settings.shopName).toBe('第二站点店铺');
+    expect(secondPublic.detailImages.every((item) => item.siteId === createdSite.id)).toBe(true);
+    expect(secondPublic.detailImages.length).toBe(secondBootstrap.detailImages.length - 1);
 
-    await fetch(`${baseUrl}/api/admin/sites/1/activate`, { method: 'POST', headers: { cookie: authCookie } });
-    const firstBootstrap = await fetch(`${baseUrl}/api/admin/bootstrap`, { headers: { cookie: authCookie } }).then((response) => response.json()) as {
+    const firstBootstrap = await fetch(`${baseUrl}/api/admin/bootstrap?siteId=1`, { headers: { cookie: authCookie } }).then((response) => response.json()) as {
       activeSiteId: number;
       settings: { siteId: number; shopName: string };
       detailImages: Array<{ siteId: number }>;
@@ -254,7 +257,7 @@ describe('backend', () => {
     expect(firstBootstrap.activeSiteId).toBe(1);
     expect(firstBootstrap.settings.shopName).not.toBe('第二站点店铺');
     expect(firstBootstrap.detailImages.every((item) => item.siteId === 1)).toBe(true);
-    expect(firstBootstrap.detailImages.length).toBeGreaterThan(secondDetailImages.length);
+    expect(firstBootstrap.detailImages.length).toBeGreaterThan(secondPublic.detailImages.length);
   });
   it('creates orders from enabled SKUs and handles payment notify idempotently', async () => {
     await login();
@@ -293,6 +296,30 @@ describe('backend', () => {
 
     const orders = await fetch(`${baseUrl}/api/admin/orders?paymentStatus=PAID`, { headers: { cookie: authCookie } }).then((response) => response.json()) as { items: Array<{ id: number; paymentStatus: string }> };
     expect(orders.items.some((order) => order.id === first.data.order.id && order.paymentStatus === 'PAID')).toBe(true);
+  });
+
+  it('creates a new order when the same customer buys the same SKU again without an idempotency key', async () => {
+    await login();
+
+    const bootstrap = await fetch(`${baseUrl}/api/public/bootstrap`).then((response) => response.json()) as { site: { id: number }; skus: Array<{ id: number }> };
+    const payload = {
+      siteId: bootstrap.site.id,
+      skuId: bootstrap.skus[0].id,
+      quantity: 1,
+      recipientName: '重复购买用户',
+      phone: '13700137000',
+      address: '广州市测试路 3 号',
+      paymentChannel: 'wxpay',
+    };
+
+    const first = await postJson<{ order: { id: number; orderNo: string; paymentStatus: string } }>('/api/public/orders', payload, '');
+    const second = await postJson<{ order: { id: number; orderNo: string; paymentStatus: string } }>('/api/public/orders', payload, '');
+
+    expect(first.response.status).toBe(201);
+    expect(second.response.status).toBe(201);
+    expect(second.data.order.id).not.toBe(first.data.order.id);
+    expect(second.data.order.orderNo).not.toBe(first.data.order.orderNo);
+    expect(second.data.order.paymentStatus).toBe('PAYING');
   });
 
   it('enforces shipping, refund marking, soft delete conditions, and export columns', async () => {

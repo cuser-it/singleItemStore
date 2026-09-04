@@ -604,7 +604,8 @@ export class OrderService {
   }
   async createOrder(input: CreateOrderInput, requestOrigin?: string) {
     await this.ensureReady();
-    const site = await this.store.getActiveSite();
+    const site = await this.store.getBootstrap(input.siteId).then((bootstrap) => bootstrap.site);
+    if (!site.isActive) throw new Error('site not active');
     const key = input.idempotencyKey?.trim();
     const settings = await this.loadPaymentSettingsState();
     if (this.persistent && key) {
@@ -695,8 +696,7 @@ export class OrderService {
     if (!this.persistent) {
       return this.orders.find((order) => order.id === id) ?? null;
     }
-    const siteId = (await this.store.getActiveSite()).id;
-    const order = await prismaClient.order.findFirst({ where: { id, siteId } });
+    const order = await prismaClient.order.findUnique({ where: { id } });
     return order ? mapOrderRecord(order) : null;
   }
 
@@ -717,11 +717,25 @@ export class OrderService {
       if (!order) return null;
       return { ...order, phone: maskPhone(order.phone), address: maskAddress(order.address) };
     }
-    const siteId = (await this.store.getActiveSite()).id;
-    const order = await prismaClient.order.findFirst({ where: { siteId, orderNo: orderNo.trim(), phone: phone.trim(), deletedAt: null } });
+    const order = await prismaClient.order.findFirst({ where: { orderNo: orderNo.trim(), phone: phone.trim(), deletedAt: null } });
     if (!order) return null;
     const mapped = mapOrderRecord(order);
     return { ...mapped, phone: maskPhone(mapped.phone), address: maskAddress(mapped.address) };
+  }
+
+  async getPaymentSuccessConfig(orderNo?: string) {
+    await this.ensureReady();
+    let siteId: number | undefined;
+    if (orderNo?.trim()) {
+      if (!this.persistent) siteId = this.orders.find((item) => item.orderNo === orderNo.trim())?.siteId;
+      else siteId = (await prismaClient.order.findUnique({ where: { orderNo: orderNo.trim() }, select: { siteId: true } }))?.siteId;
+    }
+    const settings = await this.store.getSiteSettings(siteId);
+    return {
+      message: settings.paymentSuccessMessage || '添加客服领取服用说明',
+      customerServiceUrl: settings.customerServiceUrl || '',
+      customerServiceQrCode: settings.customerServiceQrCode,
+    };
   }
 
   async shipOrder(id: number, logisticsCompany: string, logisticsNo: string, actor = 'admin') {
@@ -740,8 +754,7 @@ export class OrderService {
       this.emit({ type: 'order_shipped', orderId: order.id, orderNo: order.orderNo, updatedAt: order.updatedAt });
       return order;
     }
-    const siteId = (await this.store.getActiveSite()).id;
-    const current = await prismaClient.order.findFirst({ where: { id, siteId } });
+    const current = await prismaClient.order.findUnique({ where: { id } });
     if (!current || current.deletedAt) return null;
     if (current.fulfillmentStatus === 'SHIPPED') throw new Error('already shipped');
     const updated = await prismaClient.order.update({
@@ -768,8 +781,7 @@ export class OrderService {
       this.emit({ type: 'refund_marked', orderId: order.id, orderNo: order.orderNo, updatedAt: order.updatedAt });
       return order;
     }
-    const siteId = (await this.store.getActiveSite()).id;
-    const current = await prismaClient.order.findFirst({ where: { id, siteId } });
+    const current = await prismaClient.order.findUnique({ where: { id } });
     if (!current || current.deletedAt) return null;
     const updated = await prismaClient.order.update({
       where: { id: current.id },
@@ -796,8 +808,7 @@ export class OrderService {
       this.emit({ type: 'order_deleted', orderId: order.id, orderNo: order.orderNo, updatedAt: order.updatedAt });
       return order;
     }
-    const siteId = (await this.store.getActiveSite()).id;
-    const current = await prismaClient.order.findFirst({ where: { id, siteId } });
+    const current = await prismaClient.order.findUnique({ where: { id } });
     if (!current || current.deletedAt) return null;
     const olderThan30Days = Date.now() - current.createdAt.getTime() >= 30 * 24 * 60 * 60 * 1000;
     if (!olderThan30Days && !current.refundedAt) throw new Error('delete condition not met');
@@ -834,8 +845,7 @@ export class OrderService {
       this.emit({ type: 'payment_paid', orderId: order.id, orderNo: order.orderNo, updatedAt: order.updatedAt });
       return { ok: true, order, changed: true };
     }
-    const siteId = (await this.store.getActiveSite()).id;
-    const order = await prismaClient.order.findFirst({ where: { siteId, orderNo: params.out_trade_no } });
+    const order = await prismaClient.order.findUnique({ where: { orderNo: params.out_trade_no } });
     if (!order) return { ok: false, message: 'order not found' };
     if (params.pid !== settings.merchantId) return { ok: false, message: 'merchant mismatch' };
     if (params.sign !== expected) {
@@ -1002,7 +1012,8 @@ export class OrderService {
       this.logs.push({ id: this.logSeq++, action, summary, actor, orderId, meta, createdAt: nowIso() });
       return;
     }
-    const siteId = (await this.store.getActiveSite()).id;
+    const orderSite = orderId ? await prismaClient.order.findUnique({ where: { id: orderId }, select: { siteId: true } }) : null;
+    const siteId = orderSite?.siteId ?? (await this.store.getActiveSite()).id;
     const created = await prismaClient.operationLog.create({
       data: { siteId, orderId: orderId ?? null, action, summary, actor, meta: meta ?? undefined },
     });

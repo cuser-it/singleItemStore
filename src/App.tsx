@@ -309,13 +309,13 @@ function PublicApp() {
     setCheckoutSubmitting(true);
     try {
       const result = await createOrder({
+        siteId: bootstrap.site.id,
         skuId: sku.id,
         quantity: clampCheckoutQuantity(quantity),
         recipientName: recipient.recipientName,
         phone: recipient.phone,
         address: recipient.address,
         paymentChannel: checkoutPayment,
-        idempotencyKey: `${recipient.phone}-${sku.id}-${quantity}`,
       });
       setCheckoutOpen(false);
       showToast(`订单 ${result.order.orderNo} 已创建，正在打开支付`);
