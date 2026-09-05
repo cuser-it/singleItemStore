@@ -222,6 +222,14 @@ export function AdminApp() {
   const { message, modal } = AntApp.useApp();
   const { Header, Sider, Content } = Layout;
 
+  /** 当前订单列表筛选条件的文字描述，用于在导出弹窗里回显 */
+  const orderFilterSummary = [
+    { all: '全部支付', PAYING: '支付中', PAID: '已支付', REFUNDED: '已退款' }[paymentStatusFilter],
+    { all: '全部履约', WAIT_SHIP: '待发货', SHIPPED: '已发货' }[fulfillmentStatusFilter],
+    { active: '未删除', deleted: '已删除', all: '全部订单' }[deletedStatusFilter],
+    orderQuery.trim() ? `关键词“${orderQuery.trim()}”` : '',
+  ].filter(Boolean).join(' / ');
+
   const buildOrderParams = () => {
     const params = new URLSearchParams();
     params.set('pageSize', '50');
@@ -1003,6 +1011,8 @@ export function AdminApp() {
         visible={exportModalVisible}
         onCancel={() => setExportModalVisible(false)}
         onExport={handleExportOrders}
+        filterSummary={orderFilterSummary}
+        filteredTotal={orderTotal}
       />
     </>
   );

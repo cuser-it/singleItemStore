@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Form, DatePicker, Checkbox, Button, Space, Radio, message } from 'antd';
+import { Modal, Form, DatePicker, Checkbox, Button, Space, Radio, message, Alert } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -12,6 +12,10 @@ interface OrderExportModalProps {
     endDate?: string;
     columns: string[];
   }) => Promise<void>;
+  /** 当前列表筛选条件的文字描述，在弹窗里回显，避免用户误以为导出的是全部数据 */
+  filterSummary?: string;
+  /** 当前筛选下的订单总数（不含时间范围限制） */
+  filteredTotal?: number;
 }
 
 // 所有可导出的字段
@@ -51,7 +55,7 @@ const DEFAULT_COLUMNS = [
   'createdAt',
 ];
 
-export function OrderExportModal({ visible, onCancel, onExport }: OrderExportModalProps) {
+export function OrderExportModal({ visible, onCancel, onExport, filterSummary, filteredTotal }: OrderExportModalProps) {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [timeRangeType, setTimeRangeType] = useState<'preset' | 'custom'>('preset');
@@ -82,7 +86,8 @@ export function OrderExportModal({ visible, onCancel, onExport }: OrderExportMod
             startDate = now.subtract(30, 'day').toISOString();
             break;
         }
-        endDate = now.toISOString();
+        // 选了“全部时间”则不传时间范围，完全按列表筛选导出
+        if (presetRange !== 'all') endDate = now.toISOString();
       } else {
         const customRange = form.getFieldValue('customRange') as [Dayjs, Dayjs] | undefined;
         if (customRange && customRange[0] && customRange[1]) {
@@ -168,6 +173,24 @@ export function OrderExportModal({ visible, onCancel, onExport }: OrderExportMod
       ]}
     >
       <Form form={form} layout="vertical">
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="导出范围 = 列表筛选 ∩ 下方时间范围"
+          description={
+            <>
+              <div>
+                当前列表筛选：<b>{filterSummary || '全部订单'}</b>
+                {typeof filteredTotal === 'number' ? <>，共 <b>{filteredTotal}</b> 笔</> : null}
+              </div>
+              <div style={{ marginTop: 4 }}>
+                导出时还会再叠加下方选择的时间范围，<b>创建时间不在该范围内的订单不会被导出</b>。
+                若导出结果为空或条数少于预期，请改选更大的时间范围。
+              </div>
+            </>
+          }
+        />
         <Form.Item label="时间范围">
           <Radio.Group
             value={timeRangeType}
@@ -186,6 +209,7 @@ export function OrderExportModal({ visible, onCancel, onExport }: OrderExportMod
                 <Radio value="3d">近 3 天</Radio>
                 <Radio value="7d">近 7 天</Radio>
                 <Radio value="30d">近 30 天</Radio>
+                <Radio value="all">全部时间（不限制创建时间）</Radio>
               </Space>
             </Radio.Group>
           </Form.Item>

@@ -198,24 +198,59 @@ function mapLogRecord(record: { id: number; orderId: number | null; action: stri
   };
 }
 
+/** 把 Origin 头规范化为 http(s) 源，非法或非 http(s) 时返回空串 */
+function normalizeOrigin(requestOrigin: string | undefined) {
+  if (!requestOrigin) return '';
+  try {
+    const parsed = new URL(requestOrigin);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : '';
+  } catch {
+    return '';
+  }
+}
+
+/** 将 target 的协议/主机/端口改为 origin 的值。
+ *  注意不能用 target.host = originUrl.host：按 WHATWG 规范，赋值不带端口时会保留原有端口，
+ *  会把 http://localhost:3001/x + https://shop.example.com 拼成 https://shop.example.com:3001/x */
+function applyOrigin(target: URL, origin: string) {
+  const originUrl = new URL(origin);
+  target.protocol = originUrl.protocol;
+  target.hostname = originUrl.hostname;
+  target.port = originUrl.port;
+}
+
+const notifyFallbackPath = '/api/payment/epay/notify';
+
+/**
+ * 生成支付网关的异步通知地址（notify_url）。
+ * 与 return_url 采用同样的规则：域名/端口取自用户下单时访问的页面 Origin，后台配置只贡献路径。
+ * 历史上这里直接透传后台配置，一旦被填成 http://localhost:3001/... ，支付网关回调的是它自己的
+ * localhost，通知永远到不了本服务，订单会一直停留在“支付中”。
+ */
+export function resolveNotifyUrl(configured: string, requestOrigin: string | undefined) {
+  const raw = (configured || notifyFallbackPath).trim();
+  const origin = normalizeOrigin(requestOrigin);
+  if (!origin) return raw;
+  let target: URL;
+  try {
+    target = new URL(raw, origin);
+  } catch {
+    target = new URL(notifyFallbackPath, origin);
+  }
+  applyOrigin(target, origin);
+  return target.toString();
+}
+
 /**
  * 生成支付网关的同步跳转地址（return_url）。
- * - 域名/端口始终取自用户发起下单请求的页面 Origin，保证支付完成后跳回用户当前访问的站点（避免 5173/5174 之类端口不一致）
- * - 后台配置的 returnUrl 只贡献路径与查询参数（可填相对路径 /payment/return，也兼容旧的绝对地址）
+ * - 域名/端口始终取自用户发起下单请求的页面 Origin
+ * - 后台配置的 returnUrl 只贡献路径与查询参数
  * - 没有 Origin（如服务端自测）时，退回配置值原样使用
  */
 export function resolveReturnUrl(configured: string, requestOrigin: string | undefined, orderNo: string) {
   const fallbackPath = '/payment/return';
   const raw = (configured || fallbackPath).trim();
-  let origin = '';
-  if (requestOrigin) {
-    try {
-      const parsed = new URL(requestOrigin);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') origin = parsed.origin;
-    } catch {
-      origin = '';
-    }
-  }
+  const origin = normalizeOrigin(requestOrigin);
   let target: URL;
   try {
     target = new URL(raw, origin || 'http://placeholder.invalid');
@@ -223,9 +258,7 @@ export function resolveReturnUrl(configured: string, requestOrigin: string | und
     target = new URL(fallbackPath, origin || 'http://placeholder.invalid');
   }
   if (origin) {
-    const originUrl = new URL(origin);
-    target.protocol = originUrl.protocol;
-    target.host = originUrl.host;
+    applyOrigin(target, origin);
   }
   target.searchParams.set('orderNo', orderNo);
   if (!origin && target.hostname === 'placeholder.invalid') return `${target.pathname}${target.search}`;
@@ -910,10 +943,11 @@ export class OrderService {
   async exportOrders(filters: OrderFilters, columns: string[]) {
     await this.ensureReady();
     const allowed: Record<string, string> = {
-      orderNo: '订单号', recipientName: '姓名', phone: '手机号', address: '地址', skuName: '规格', quantity: '数量', totalAmount: '成交金额', paymentStatus: '支付状态', fulfillmentStatus: '履约状态', logisticsCompany: '物流公司', logisticsNo: '物流单号', createdAt: '创建时间', paidAt: '支付时间', shippedAt: '发货时间', refundNote: '退款备注',
+      orderNo: '订单号', productName: '商品名称', recipientName: '姓名', phone: '手机号', address: '地址', skuName: '规格', quantity: '数量', unitAmount: '单价', totalAmount: '成交金额', paymentChannel: '支付渠道', paymentStatus: '支付状态', fulfillmentStatus: '履约状态', logisticsCompany: '物流公司', logisticsNo: '物流单号', createdAt: '创建时间', paidAt: '支付时间', shippedAt: '发货时间', refundedAt: '退款时间', refundNote: '退款备注',
     };
     const picked = columns.length ? columns : ['orderNo', 'recipientName', 'phone', 'address', 'skuName', 'quantity', 'totalAmount', 'paymentStatus', 'fulfillmentStatus', 'createdAt'];
-    if (picked.some((column) => !allowed[column])) throw new Error('invalid export column');
+    // 用 hasOwnProperty 而不是真值判断：否则 __proto__ / constructor 等原型链上的键会绕过校验
+    if (picked.some((column) => !Object.prototype.hasOwnProperty.call(allowed, column))) throw new Error('invalid export column');
     const rows = this.persistent ? await this.listOrderRows(filters) : this.filterOrdersSync(filters, filters.siteId ?? (await this.store.getActiveSite()).id);
     const sheetRows = [picked.map((column) => allowed[column])].concat(rows.map((order) => picked.map((column) => escapeCell((order as any)[column]))));
     const workbook = XLSX.utils.book_new();
@@ -988,7 +1022,7 @@ export class OrderService {
   }
 
   private buildPayment(order: Order, settings = this.paymentSettings, requestOrigin?: string) {
-    const params = { pid: settings.merchantId, type: order.paymentChannel, out_trade_no: order.orderNo, notify_url: settings.notifyUrl, return_url: resolveReturnUrl(settings.returnUrl, requestOrigin, order.orderNo), name: order.skuName, money: order.totalAmount };
+    const params = { pid: settings.merchantId, type: order.paymentChannel, out_trade_no: order.orderNo, notify_url: resolveNotifyUrl(settings.notifyUrl, requestOrigin), name: order.skuName, money: order.totalAmount, return_url: resolveReturnUrl(settings.returnUrl, requestOrigin, order.orderNo) };
     const signed = { ...params, sign: signParams(params, settings.merchantSecret ?? ''), sign_type: 'MD5' };
     const query = new URLSearchParams(signed).toString();
     return { order, paymentUrl: `${settings.gatewayUrl}?${query}`, params: signed };
