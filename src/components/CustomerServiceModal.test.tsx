@@ -16,7 +16,7 @@ describe('CustomerServiceModal layouts', () => {
   it('二维码 + 链接：上方二维码，下方带超链接的按钮', () => {
     render(<CustomerServiceModal visible onClose={() => {}} qrCodeUrl="https://x/qr.png" serviceLink="weixin://dl/business/?t=abc" />);
     expect(screen.getByTestId('cs-qr')).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: /无法扫码？点击直接添加/ });
+    const link = screen.getByRole('link', { name: /点击直接添加/ });
     expect(link).toHaveAttribute('href', 'weixin://dl/business/?t=abc');
     expect(link).toHaveAttribute('target', '_blank');
     expect(screen.queryByTestId('cs-longpress-hint')).toBeNull();

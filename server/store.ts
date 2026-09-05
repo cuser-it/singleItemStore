@@ -163,6 +163,11 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
     async getActiveSite() {
       return clone(siteOrActive(state));
     },
+    async getSiteBySlug(slug: string) {
+      const normalized = normalizeSlug(slug);
+      const site = state.sites.find((item) => item.slug === normalized);
+      return site ? clone(site) : null;
+    },
     async listSites() {
       return [...state.sites].sort((a, b) => a.id - b.id).map(clone);
     },

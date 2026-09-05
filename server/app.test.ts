@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Server } from 'node:http';
 import { createApp } from './app';
-import { createMemoryStore } from './store';
+import { createMemoryStore, defaultSiteSettings } from './store';
+import type { SiteSettings } from '../shared/site';
 
 const uploadDir = mkdtempSync(path.join(os.tmpdir(), 'single-item-store-upload-'));
 let server: Server | null = null;
@@ -12,7 +13,17 @@ let baseUrl = '';
 let authCookie = '';
 
 async function startServer() {
-  const app = await createApp({ store: createMemoryStore(), uploadDir, adminPassword: 'admin123456' });
+  // 内存 store 的 SKU 由 settings.productVariants 在站点初始化时派生，
+  // 默认配置里为空数组，会导致下单相关用例拿不到任何 SKU，这里显式播种一条
+  const seedSettings: SiteSettings[] = [
+    {
+      ...defaultSiteSettings,
+      id: 1,
+      siteId: 1,
+      productVariants: [{ id: 'single', name: '单盒体验装', subtitle: '先试用再决定', price: 99, originalPrice: 299, saleLabel: '券后价' }],
+    },
+  ];
+  const app = await createApp({ store: createMemoryStore({ settings: seedSettings }), uploadDir, adminPassword: 'admin123456' });
   const httpServer = app.listen(0);
   await new Promise<void>((resolve) => httpServer.once('listening', resolve));
   const address = httpServer.address();
@@ -111,6 +122,21 @@ describe('backend', () => {
     const uploadResult = (await uploadResponse.json()) as { source: string; resolvedUrl: string };
     expect(uploadResult.source).toMatch(/^\/img\//);
     expect(uploadResult.resolvedUrl).toBe(uploadResult.source);
+
+    // 将刚上传的文件挂为首页轮播图，才能验证“上传件会出现在公开 heroImages 里”
+    const heroMediaResponse = await fetch(`${baseUrl}/api/admin/media-assets`, {
+      method: 'POST',
+      headers: { cookie: authCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        section: 'hero',
+        sourceType: 'upload',
+        source: uploadResult.source,
+        alt: 'hero-upload',
+        sortOrder: 1,
+        enabled: true,
+      }),
+    });
+    expect(heroMediaResponse.status).toBe(201);
 
     const urlMediaResponse = await fetch(`${baseUrl}/api/admin/media-assets`, {
       method: 'POST',
@@ -236,7 +262,8 @@ describe('backend', () => {
 
     const firstDetailId = secondBootstrap.detailImages[0]?.id;
     expect(firstDetailId).toBeTypeOf('number');
-    await fetch(`${baseUrl}/api/admin/media-assets/${firstDetailId}`, { method: 'DELETE', headers: { cookie: authCookie } });
+    // 当前有多个处于启用状态的站点，删除时必须显式指定 siteId，否则会落到另一个活动站点上
+    await fetch(`${baseUrl}/api/admin/media-assets/${firstDetailId}?siteId=${createdSite.id}`, { method: 'DELETE', headers: { cookie: authCookie } });
     await fetch(`${baseUrl}/api/admin/site-settings`, {
       method: 'PUT',
       headers: { cookie: authCookie, 'Content-Type': 'application/json' },
@@ -275,7 +302,7 @@ describe('backend', () => {
       idempotencyKey: 'same-submit',
       ignoredPrice: '0.01',
     };
-    const first = await postJson<{ order: { id: number; orderNo: string; totalAmount: string; paymentStatus: string }; paymentUrl: string }>('/api/public/orders', payload, '');
+    const first = await postJson<{ order: { id: number; orderNo: string; totalAmount: string; paymentStatus: string }; paymentUrl: string; params?: Record<string, unknown> }>('/api/public/orders', payload, '');
     expect(first.response.status).toBe(201);
     expect(first.data.order.totalAmount).toBe((Number(skus[0].price) * 2).toFixed(2));
     expect(first.data.order.paymentStatus).toBe('PAYING');

@@ -428,17 +428,9 @@ export class OrderService {
         const timestamp = nowIso();
         this.skus.set(resolvedSiteId, variants.map((variant, index) => mapVariantToSku(variant, resolvedSiteId, index, timestamp)));
         this.skuSeq = Math.max(this.skuSeq, ...this.skus.get(resolvedSiteId)!.map((item) => item.id)) + 1;
-      } else if (JSON.stringify(this.skus.get(resolvedSiteId)!.map((sku) => [sku.skuCode, sku.name, sku.subtitle, sku.price, sku.originalPrice, sku.saleLabel, sku.highlight, sku.sortOrder])) !== JSON.stringify(variants.map((variant) => [variant.id, variant.name, variant.subtitle, variant.price.toFixed(2), variant.originalPrice.toFixed(2), variant.saleLabel, variant.highlight, variants.indexOf(variant) + 1]))) {
-        const current = this.skus.get(resolvedSiteId)!;
-        const timestamp = nowIso();
-        const byCode = new Map(current.map((sku) => [sku.skuCode, sku]));
-        const next = variants.map((variant, index) => {
-          const existing = byCode.get(variant.id);
-          const mapped = mapVariantToSku(variant, resolvedSiteId, index, timestamp);
-          return existing ? { ...mapped, id: existing.id, enabled: existing.enabled, createdAt: existing.createdAt } : mapped;
-        });
-        this.skus.set(resolvedSiteId, next);
       }
+      // SKU 一旦生成即以自身为准：productVariants 只用于站点初始化，
+      // 不能反向覆盖后台手动编辑过的 SKU（与 Prisma 分支保持一致）
       return this.skus.get(resolvedSiteId)!;
     }
     const existing = await prismaClient.productSku.findMany({ where: { siteId: resolvedSiteId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
