@@ -183,6 +183,7 @@ model PaymentSettings {
   enabledChannels Json
   notifyUrl       String
   returnUrl       String
+  publicBaseUrl   String   @default("")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

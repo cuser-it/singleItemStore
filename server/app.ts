@@ -222,6 +222,7 @@ function buildPaymentSettingsInput(body: any) {
     enabledChannels: Array.isArray(body.enabledChannels) ? body.enabledChannels : [],
     notifyUrl: String(body.notifyUrl ?? '').trim(),
     returnUrl: String(body.returnUrl ?? '').trim(),
+    publicBaseUrl: String(body.publicBaseUrl ?? '').trim(),
   };
 }
 

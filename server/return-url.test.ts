@@ -28,8 +28,20 @@ describe('resolveReturnUrl（支付同步跳转地址）', () => {
 });
 
 describe('resolveNotifyUrl（支付异步回调地址）', () => {
-  it('后台配成 localhost 时，以买家访问的公网域名为准', () => {
+  it('配置了站点公网地址时，优先用它（而不是买家访问的地址）', () => {
+    // 部署后的主场景：买家可能从内网 IP / localhost 访问，但网关回调必须走公网地址
+    expect(resolveNotifyUrl('/api/payment/epay/notify', 'http://192.168.1.10:5173', 'https://shop.example.com')).toBe('https://shop.example.com/api/payment/epay/notify');
+    expect(resolveNotifyUrl('/api/payment/epay/notify', 'http://localhost:5173', 'http://1.2.3.4:3001')).toBe('http://1.2.3.4:3001/api/payment/epay/notify');
+  });
+
+  it('未配置公网地址时，回退为买家访问的域名', () => {
+    expect(resolveNotifyUrl('/api/payment/epay/notify', 'https://shop.example.com')).toBe('https://shop.example.com/api/payment/epay/notify');
+    expect(resolveNotifyUrl('/api/payment/epay/notify', 'https://shop.example.com', '')).toBe('https://shop.example.com/api/payment/epay/notify');
+  });
+
+  it('后台配成 localhost 的绝对地址时，以公网地址为准', () => {
     // 回归：旧实现直接透传配置值，导致支付网关回调到它自己的 localhost，订单永远停在“支付中”
+    expect(resolveNotifyUrl('http://localhost:3001/api/payment/epay/notify', undefined, 'https://shop.example.com')).toBe('https://shop.example.com/api/payment/epay/notify');
     expect(resolveNotifyUrl('http://localhost:3001/api/payment/epay/notify', 'https://shop.example.com')).toBe('https://shop.example.com/api/payment/epay/notify');
   });
 
@@ -42,9 +54,24 @@ describe('resolveNotifyUrl（支付异步回调地址）', () => {
     expect(resolveNotifyUrl('/custom/notify?channel=epay', 'https://shop.example.com')).toBe('https://shop.example.com/custom/notify?channel=epay');
   });
 
-  it('没有 Origin 或 Origin 非法时退回配置值原样使用', () => {
+  it('公网地址非法时忽略它，回退到请求 Origin', () => {
+    expect(resolveNotifyUrl('/api/payment/epay/notify', 'https://shop.example.com', 'not-a-url')).toBe('https://shop.example.com/api/payment/epay/notify');
+    expect(resolveNotifyUrl('/api/payment/epay/notify', 'https://shop.example.com', 'ftp://evil.example.com')).toBe('https://shop.example.com/api/payment/epay/notify');
+  });
+
+  it('没有 Origin 也没有公网地址时退回配置值原样使用', () => {
     expect(resolveNotifyUrl('https://api.example.com/api/payment/epay/notify', undefined)).toBe('https://api.example.com/api/payment/epay/notify');
     expect(resolveNotifyUrl('/api/payment/epay/notify', 'not-a-url')).toBe('/api/payment/epay/notify');
     expect(resolveNotifyUrl('/api/payment/epay/notify', 'ftp://evil.example.com')).toBe('/api/payment/epay/notify');
+  });
+});
+
+describe('resolveReturnUrl 与站点公网地址', () => {
+  it('配置了公网地址时，同步跳转也优先使用它', () => {
+    expect(resolveReturnUrl('/payment/return', 'http://192.168.1.10:5173', 'SO100', 'https://shop.example.com')).toBe('https://shop.example.com/payment/return?orderNo=SO100');
+  });
+
+  it('公网地址为空时行为与以前一致', () => {
+    expect(resolveReturnUrl('/payment/return', 'http://localhost:5174', 'SO101', '')).toBe('http://localhost:5174/payment/return?orderNo=SO101');
   });
 });

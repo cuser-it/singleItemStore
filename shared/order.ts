@@ -116,6 +116,12 @@ export type PaymentSettings = {
   enabledChannels: PaymentChannel[];
   notifyUrl: string;
   returnUrl: string;
+  /**
+   * 站点的公网访问地址（如 https://shop.example.com 或 http://1.2.3.4:3001）。
+   * 支付网关的异步回调由网关服务器发起，必须能从公网访问到本服务，
+   * 因此部署后在后台填写一次即可，无需修改代码。留空则回退为买家下单时访问的域名。
+   */
+  publicBaseUrl: string;
   secretMasked: string;
   updatedAt: string;
 };

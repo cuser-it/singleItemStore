@@ -174,6 +174,7 @@ function mapPaymentSettingsRecord(record: {
   enabledChannels: unknown;
   notifyUrl: string;
   returnUrl: string;
+  publicBaseUrl?: string | null;
   updatedAt: Date;
 }): PaymentSettings {
   const secret = decodeSecret(record.encryptedSecret);
@@ -183,6 +184,7 @@ function mapPaymentSettingsRecord(record: {
     enabledChannels: Array.isArray(record.enabledChannels) ? record.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay') : ['alipay', 'wxpay'],
     notifyUrl: record.notifyUrl,
     returnUrl: record.returnUrl,
+    publicBaseUrl: record.publicBaseUrl ?? '',
     secretMasked: maskSecret(secret),
     updatedAt: record.updatedAt.toISOString(),
   };
@@ -222,14 +224,22 @@ function applyOrigin(target: URL, origin: string) {
 const notifyFallbackPath = '/api/payment/epay/notify';
 
 /**
- * 生成支付网关的异步通知地址（notify_url）。
- * 与 return_url 采用同样的规则：域名/端口取自用户下单时访问的页面 Origin，后台配置只贡献路径。
- * 历史上这里直接透传后台配置，一旦被填成 http://localhost:3001/... ，支付网关回调的是它自己的
- * localhost，通知永远到不了本服务，订单会一直停留在“支付中”。
+ * 确定拼接支付地址时使用的域名。
+ * 优先用后台配置的“站点公网地址”，其次才是买家下单时访问的域名。
+ * 因为异步回调由支付网关服务器发起，必须是公网可达地址；而买家可能通过
+ * 内网 IP、localhost 等方式访问，直接沿用会导致网关回调不回来。
  */
-export function resolveNotifyUrl(configured: string, requestOrigin: string | undefined) {
+function resolveBaseOrigin(publicBaseUrl: string | undefined, requestOrigin: string | undefined) {
+  return normalizeOrigin(publicBaseUrl) || normalizeOrigin(requestOrigin);
+}
+
+/**
+ * 生成支付网关的异步通知地址（notify_url）。
+ * 域名取自后台配置的公网地址（回退为买家访问域名），后台配置的 notifyUrl 只贡献路径。
+ */
+export function resolveNotifyUrl(configured: string, requestOrigin: string | undefined, publicBaseUrl?: string) {
   const raw = (configured || notifyFallbackPath).trim();
-  const origin = normalizeOrigin(requestOrigin);
+  const origin = resolveBaseOrigin(publicBaseUrl, requestOrigin);
   if (!origin) return raw;
   let target: URL;
   try {
@@ -243,14 +253,14 @@ export function resolveNotifyUrl(configured: string, requestOrigin: string | und
 
 /**
  * 生成支付网关的同步跳转地址（return_url）。
- * - 域名/端口始终取自用户发起下单请求的页面 Origin
+ * - 域名优先取后台配置的公网地址，其次取买家下单时访问的页面 Origin
  * - 后台配置的 returnUrl 只贡献路径与查询参数
- * - 没有 Origin（如服务端自测）时，退回配置值原样使用
+ * - 两者都没有时，退回配置值原样使用
  */
-export function resolveReturnUrl(configured: string, requestOrigin: string | undefined, orderNo: string) {
+export function resolveReturnUrl(configured: string, requestOrigin: string | undefined, orderNo: string, publicBaseUrl?: string) {
   const fallbackPath = '/payment/return';
   const raw = (configured || fallbackPath).trim();
-  const origin = normalizeOrigin(requestOrigin);
+  const origin = resolveBaseOrigin(publicBaseUrl, requestOrigin);
   let target: URL;
   try {
     target = new URL(raw, origin || 'http://placeholder.invalid');
@@ -327,6 +337,7 @@ export class OrderService {
     enabledChannels: ['alipay', 'wxpay'],
     notifyUrl: process.env.EPAY_NOTIFY_URL ?? '/api/payment/epay/notify',
     returnUrl: process.env.EPAY_RETURN_URL ?? '/payment/return',
+    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? '',
     updatedAt: nowIso(),
   };
 
@@ -368,6 +379,7 @@ export class OrderService {
         "enabledChannels" JSONB NOT NULL,
         "notifyUrl" TEXT NOT NULL,
         "returnUrl" TEXT NOT NULL,
+        "publicBaseUrl" TEXT NOT NULL DEFAULT '',
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
@@ -896,6 +908,7 @@ export class OrderService {
       enabledChannels: state.enabledChannels,
       notifyUrl: state.notifyUrl,
       returnUrl: state.returnUrl,
+      publicBaseUrl: state.publicBaseUrl ?? '',
       secretMasked: maskSecret(state.merchantSecret ?? ''),
       updatedAt: state.updatedAt,
     };
@@ -911,6 +924,7 @@ export class OrderService {
         enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay'),
         notifyUrl: input.notifyUrl.trim(),
         returnUrl: input.returnUrl.trim(),
+        publicBaseUrl: normalizeOrigin(input.publicBaseUrl),
         updatedAt: nowIso(),
       };
       await this.log('payment_settings_updated', 'Payment settings updated', actor);
@@ -926,6 +940,7 @@ export class OrderService {
         enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay'),
         notifyUrl: input.notifyUrl.trim(),
         returnUrl: input.returnUrl.trim(),
+        publicBaseUrl: normalizeOrigin(input.publicBaseUrl),
       },
       create: {
         gatewayUrl: input.gatewayUrl.trim(),
@@ -934,6 +949,7 @@ export class OrderService {
         enabledChannels: input.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay'),
         notifyUrl: input.notifyUrl.trim(),
         returnUrl: input.returnUrl.trim(),
+        publicBaseUrl: normalizeOrigin(input.publicBaseUrl),
       },
     });
     await this.log('payment_settings_updated', 'Payment settings updated', actor);
@@ -984,6 +1000,7 @@ export class OrderService {
         enabledChannels: Array.isArray(existing.enabledChannels) ? existing.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay') : ['alipay', 'wxpay'],
         notifyUrl: existing.notifyUrl,
         returnUrl: existing.returnUrl,
+        publicBaseUrl: (existing as { publicBaseUrl?: string | null }).publicBaseUrl ?? '',
         updatedAt: existing.updatedAt.toISOString(),
       };
     }
@@ -995,6 +1012,7 @@ export class OrderService {
         enabledChannels: this.paymentSettings.enabledChannels,
         notifyUrl: this.paymentSettings.notifyUrl,
         returnUrl: this.paymentSettings.returnUrl,
+        publicBaseUrl: this.paymentSettings.publicBaseUrl ?? '',
       },
     });
     return {
@@ -1004,6 +1022,7 @@ export class OrderService {
       enabledChannels: Array.isArray(created.enabledChannels) ? created.enabledChannels.filter((item): item is PaymentChannel => item === 'alipay' || item === 'wxpay') : ['alipay', 'wxpay'],
       notifyUrl: created.notifyUrl,
       returnUrl: created.returnUrl,
+      publicBaseUrl: (created as { publicBaseUrl?: string | null }).publicBaseUrl ?? '',
       updatedAt: created.updatedAt.toISOString(),
     };
   }
@@ -1022,7 +1041,7 @@ export class OrderService {
   }
 
   private buildPayment(order: Order, settings = this.paymentSettings, requestOrigin?: string) {
-    const params = { pid: settings.merchantId, type: order.paymentChannel, out_trade_no: order.orderNo, notify_url: resolveNotifyUrl(settings.notifyUrl, requestOrigin), name: order.skuName, money: order.totalAmount, return_url: resolveReturnUrl(settings.returnUrl, requestOrigin, order.orderNo) };
+    const params = { pid: settings.merchantId, type: order.paymentChannel, out_trade_no: order.orderNo, notify_url: resolveNotifyUrl(settings.notifyUrl, requestOrigin, settings.publicBaseUrl), name: order.skuName, money: order.totalAmount, return_url: resolveReturnUrl(settings.returnUrl, requestOrigin, order.orderNo, settings.publicBaseUrl) };
     const signed = { ...params, sign: signParams(params, settings.merchantSecret ?? ''), sign_type: 'MD5' };
     const query = new URLSearchParams(signed).toString();
     return { order, paymentUrl: `${settings.gatewayUrl}?${query}`, params: signed };
