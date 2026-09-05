@@ -314,6 +314,63 @@ function escapeCell(value: unknown) {
   return /^[=+\-@]/.test(text) ? `'${text}` : text;
 }
 
+/** 导出用的枚举中文映射，保持与后台列表展示一致 */
+const exportPaymentStatusLabels: Record<string, string> = {
+  UNPAID: '待支付',
+  PAYING: '支付中',
+  PAID: '已支付',
+  PAYMENT_FAILED: '支付失败',
+  REFUNDED: '已退款',
+};
+
+const exportFulfillmentStatusLabels: Record<string, string> = {
+  WAIT_SHIP: '待发货',
+  SHIPPED: '已发货',
+};
+
+const exportPaymentChannelLabels: Record<string, string> = {
+  alipay: '支付宝',
+  wxpay: '微信支付',
+};
+
+/** 把 ISO 时间转成上海时区的 YYYY-MM-DD HH:mm:ss，便于表格阅读 */
+function formatExportDateTime(value: unknown) {
+  const date = parseDate(typeof value === 'string' ? value : value instanceof Date ? value.toISOString() : undefined);
+  if (!date) return '';
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: shanghaiTimeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(date).reduce<Record<string, string>>((acc, part) => { acc[part.type] = part.value; return acc; }, {});
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour === '24' ? '00' : parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+/** 按列把数据库原始值格式化为对用户友好的中文展示值 */
+function formatExportValue(column: string, value: unknown) {
+  if (value === null || value === undefined || value === '') return '';
+  switch (column) {
+    case 'paymentStatus':
+      return exportPaymentStatusLabels[String(value)] ?? String(value);
+    case 'fulfillmentStatus':
+      return exportFulfillmentStatusLabels[String(value)] ?? String(value);
+    case 'paymentChannel':
+      return exportPaymentChannelLabels[String(value)] ?? String(value);
+    case 'createdAt':
+    case 'paidAt':
+    case 'shippedAt':
+    case 'refundedAt':
+      return formatExportDateTime(value);
+    case 'unitAmount':
+    case 'totalAmount': {
+      const amount = Number(value);
+      return Number.isFinite(amount) ? amount.toFixed(2) : String(value);
+    }
+    default:
+      return String(value);
+  }
+}
+
 function parseDate(value?: string) {
   if (!value) return undefined;
   const date = new Date(value);
@@ -965,7 +1022,9 @@ export class OrderService {
     // 用 hasOwnProperty 而不是真值判断：否则 __proto__ / constructor 等原型链上的键会绕过校验
     if (picked.some((column) => !Object.prototype.hasOwnProperty.call(allowed, column))) throw new Error('invalid export column');
     const rows = this.persistent ? await this.listOrderRows(filters) : this.filterOrdersSync(filters, filters.siteId ?? (await this.store.getActiveSite()).id);
-    const sheetRows = [picked.map((column) => allowed[column])].concat(rows.map((order) => picked.map((column) => escapeCell((order as any)[column]))));
+    const sheetRows = [picked.map((column) => allowed[column])].concat(
+      rows.map((order) => picked.map((column) => escapeCell(formatExportValue(column, (order as any)[column])))),
+    );
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
     XLSX.utils.book_append_sheet(workbook, sheet, 'Orders');

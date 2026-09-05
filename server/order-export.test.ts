@@ -128,4 +128,20 @@ describe('订单导出', () => {
     expect(header.length).toBe(allColumns.length);
     expect(dataRows.length).toBe(2);
   });
+
+  it('枚举与时间字段导出为中文/可读格式，而不是数据库原始值', async () => {
+    const columns = ['paymentStatus', 'fulfillmentStatus', 'paymentChannel', 'createdAt', 'totalAmount', 'paidAt'];
+    const response = await fetch(`${baseUrl}/api/admin/orders/export?columns=${columns.join(',')}`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    const { header, dataRows } = readSheet(await response.arrayBuffer());
+    expect(header).toEqual(['支付状态', '履约状态', '支付渠道', '创建时间', '成交金额', '支付时间']);
+    const [row] = dataRows;
+    expect(row[0]).toBe('支付中');
+    expect(row[1]).toBe('待发货');
+    expect(row[2]).toBe('支付宝');
+    expect(row[3]).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(row[4]).toMatch(/^\d+\.\d{2}$/);
+    // 未支付订单的支付时间应为空字符串，而不是 undefined/null 字样
+    expect(row[5] ?? '').toBe('');
+  });
 });
