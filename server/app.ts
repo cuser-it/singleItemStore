@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import cors from 'cors';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import {
   defaultBootstrap,
@@ -26,6 +27,8 @@ export type CreateAppOptions = {
   adminPassword?: string;
   uploadDir?: string;
   uploadStorage?: UploadStorage;
+  /** 前端构建产物目录，默认 dist；目录不存在时不挂载静态服务 */
+  staticDir?: string;
 };
 
 const jsonParser = express.json({ limit: '2mb' });
@@ -226,11 +229,30 @@ function buildPaymentSettingsInput(body: any) {
   };
 }
 
+/**
+ * 挂载前端构建产物：带 hash 的资源长缓存，index.html 不缓存，其余路径回退到 SPA 入口。
+ * dist 不存在（开发、测试环境）时直接跳过，不影响现有行为。
+ */
+function mountStaticFrontend(app: express.Express, staticDir: string) {
+  const indexHtml = path.join(staticDir, 'index.html');
+  if (!existsSync(indexHtml)) return;
+  app.use('/assets', express.static(path.join(staticDir, 'assets'), { immutable: true, maxAge: '1y' }));
+  app.use(express.static(staticDir, { index: false }));
+  // Express 5 不再支持 '*' 通配符路径，用正则排除 API / 上传目录后回退到 index.html
+  app.get(/^\/(?!api\/|img\/|healthz$).*/, (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(indexHtml);
+  });
+}
+
 export async function createApp(options: CreateAppOptions = {}) {
   const store: ContentStore = options.store ?? (process.env.DATABASE_URL ? await import('./prismaStore').then((mod) => mod.createPrismaStore()) : createMemoryStore());
   const adminPassword = options.adminPassword ?? process.env.ADMIN_PASSWORD ?? 'admin123456';
   const uploadDir = options.uploadDir ?? path.resolve(process.cwd(), 'storage', 'img');
   const uploadStorage = createSafeUploadStorage(uploadDir, options.uploadStorage);
+  // 生产单端口部署：同一个进程同时提供 API 与前端构建产物（dist）
+  const staticDir = options.staticDir ?? process.env.STATIC_DIR ?? path.resolve(process.cwd(), 'dist');
   const orderService = new OrderService(store);
   const sessions = new Map<string, true>();
   const publicBootstrapCache = new Map<string, { expiresAt: number; value: Promise<unknown> }>();
@@ -720,6 +742,14 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
     });
   });
+
+  // 未匹配的 API 路径统一返回 JSON 404，避免前端拿到 HTML 后报 JSON 解析错误
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ message: 'not found' });
+  });
+
+  // 必须在所有 API 路由之后，否则 SPA 回退会抢先处理 /api 请求
+  mountStaticFrontend(app, staticDir);
 
   return app;
 }
