@@ -165,6 +165,8 @@ npm run build          # 前端有改动时才需要
 
 | 现象 | 原因与处理 |
 |---|---|
+| 日志出现 `[panel] 未设置 DATABASE_URL` 但 `.env` 里明明配了 | 确认 `.env` 在**源码根目录**（和 `package.json` 同级），且运行环境的源码目录指向该目录。旧版脚本有此 bug，`git pull` 更新到最新即可 |
+| 日志出现 `DATABASE_URL 指向 localhost … 连不到数据库` 并退出 | 从本地 `.env` 复制过来没改主机名，改成数据库容器名 |
 | 运行环境启动失败，日志报 `Can't reach database server` | `DATABASE_URL` 写成了 `127.0.0.1`，要改成 PostgreSQL 的**容器名** |
 | 启动很久没反应然后失败 | 首次在容器里构建前端超时 → 先按第 3 步在 SSH 手动 `npm run build` |
 | 网站打开 404 / 白屏 | `dist/` 没构建出来，后端会跳过静态托管；执行 `npm run build` 后重启 |
