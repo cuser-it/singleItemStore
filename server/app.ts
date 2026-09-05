@@ -226,7 +226,7 @@ function buildPaymentSettingsInput(body: any) {
 }
 
 export async function createApp(options: CreateAppOptions = {}) {
-  const store = options.store ?? (process.env.DATABASE_URL ? await import('./prismaStore').then((mod) => mod.createPrismaStore()) : createMemoryStore());
+  const store: ContentStore = options.store ?? (process.env.DATABASE_URL ? await import('./prismaStore').then((mod) => mod.createPrismaStore()) : createMemoryStore());
   const adminPassword = options.adminPassword ?? process.env.ADMIN_PASSWORD ?? 'admin123456';
   const uploadDir = options.uploadDir ?? path.resolve(process.cwd(), 'storage', 'img');
   const uploadStorage = createSafeUploadStorage(uploadDir, options.uploadStorage);

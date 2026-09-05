@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "start": "node scripts/start.mjs",
     "server": "tsx server/index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1124.0",
@@ -37,6 +39,8 @@
     "@types/multer": "^2.0.0",
     "@types/node": "^24.3.1",
     "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^5.0.2",
     "jsdom": "^26.1.0",
     "prisma": "^6.16.1",

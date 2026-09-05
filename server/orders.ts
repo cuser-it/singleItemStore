@@ -17,6 +17,7 @@ import type {
 } from '../shared/order';
 import type { ContentStore } from './store';
 import { prismaClient } from './prismaStore';
+import type { Prisma } from '@prisma/client';
 
 const phonePattern = /^1[3-9]\d{9}$/;
 const moneyPattern = /^\d{1,8}(\.\d{1,2})?$/;
@@ -938,7 +939,7 @@ export class OrderService {
     return { ...params, sign: signParams(params, settings.merchantSecret ?? ''), sign_type: 'MD5' };
   }
 
-  private async loadPaymentSettingsState() {
+  private async loadPaymentSettingsState(): Promise<PaymentSettingsInput & { updatedAt: string }> {
     if (!this.persistent) return this.paymentSettings;
     const existing = await prismaClient.paymentSettings.findFirst();
     if (existing) {
@@ -1007,7 +1008,7 @@ export class OrderService {
     const orderSite = orderId ? await prismaClient.order.findUnique({ where: { id: orderId }, select: { siteId: true } }) : null;
     const siteId = orderSite?.siteId ?? (await this.store.getActiveSite()).id;
     const created = await prismaClient.operationLog.create({
-      data: { siteId, orderId: orderId ?? null, action, summary, actor, meta: meta ?? undefined },
+      data: { siteId, orderId: orderId ?? null, action, summary, actor, meta: (meta ?? undefined) as Prisma.InputJsonValue | undefined },
     });
     this.logs.push({ id: created.id, action: created.action, summary: created.summary, actor: created.actor, orderId: created.orderId ?? undefined, meta: (created.meta as Record<string, unknown> | null) ?? undefined, createdAt: created.createdAt.toISOString() });
   }

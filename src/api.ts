@@ -53,8 +53,8 @@ export async function fetchPublicBootstrap(slug?: string) {
   return requestJson<PublicBootstrap>(url);
 }
 
-export async function fetchAdminBootstrap(siteId?: number) {
-  const params = siteId ? `?siteId=${siteId}` : '';
+export async function fetchAdminBootstrap(siteId?: number | null) {
+  const params = siteId != null ? `?siteId=${siteId}` : '';
   return requestJson<AdminBootstrap>(`/api/admin/bootstrap${params}`);
 }
 
@@ -100,7 +100,7 @@ export async function activateSite(id: number) {
   return requestJson<Site>(`/api/admin/sites/${id}/activate`, { method: 'POST' });
 }
 
-export async function saveSiteSettings(siteId: number, input: SiteSettingsUpdateInput) {
+export async function saveSiteSettings(siteId: number | null, input: SiteSettingsUpdateInput) {
   return requestJson<SiteSettings>('/api/admin/site-settings', {
     method: 'PUT',
     body: JSON.stringify({ ...input, siteId }),
@@ -128,12 +128,13 @@ export async function updateMediaAsset(id: number, input: Parameters<typeof crea
   });
 }
 
-export async function deleteMediaAsset(id: number, siteId?: number) {
-  const params = siteId ? `?siteId=${siteId}` : '';
+export async function deleteMediaAsset(id: number, siteId?: number | null) {
+  const params = siteId != null ? `?siteId=${siteId}` : '';
   return requestJson<void>(`/api/admin/media-assets/${id}${params}`, { method: 'DELETE' });
 }
 
 export async function createReview(input: {
+  siteId?: number | null;
   name: string;
   content: string;
   images: string[];
@@ -154,12 +155,13 @@ export async function updateReview(id: number, input: Parameters<typeof createRe
   });
 }
 
-export async function deleteReview(id: number, siteId?: number) {
-  const params = siteId ? `?siteId=${siteId}` : '';
+export async function deleteReview(id: number, siteId?: number | null) {
+  const params = siteId != null ? `?siteId=${siteId}` : '';
   return requestJson<void>(`/api/admin/reviews/${id}${params}`, { method: 'DELETE' });
 }
 
 export async function createFloatingPurchase(input: {
+  siteId?: number | null;
   content: string;
   enabled: boolean;
   sortOrder: number;
@@ -177,8 +179,8 @@ export async function updateFloatingPurchase(id: number, input: Parameters<typeo
   });
 }
 
-export async function deleteFloatingPurchase(id: number, siteId?: number) {
-  const params = siteId ? `?siteId=${siteId}` : '';
+export async function deleteFloatingPurchase(id: number, siteId?: number | null) {
+  const params = siteId != null ? `?siteId=${siteId}` : '';
   return requestJson<void>(`/api/admin/floating-purchases/${id}${params}`, { method: 'DELETE' });
 }
 
@@ -191,8 +193,8 @@ export async function uploadAsset(file: File) {
   });
 }
 
-export async function fetchAdminSkus(siteId?: number) {
-  const params = siteId ? `?siteId=${siteId}` : '';
+export async function fetchAdminSkus(siteId?: number | null) {
+  const params = siteId != null ? `?siteId=${siteId}` : '';
   return requestJson<ProductSku[]>(`/api/admin/skus${params}`);
 }
 

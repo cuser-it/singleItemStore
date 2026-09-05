@@ -457,7 +457,9 @@ async function duplicateSiteContent(templateSiteId: number, newSiteId: number) {
 export async function createPrismaStore(): Promise<ContentStore> {
   await ensureSeed();
 
-  return {
+  // 使用具名变量而不是在对象字面量里用 this：
+  // 否则 this 会被推断为 ContentStore | PromiseLike<ContentStore>，导致方法调用全部报错
+  const store: ContentStore = {
     async getActiveSite() {
       return mapSite(await getActiveSiteRecord());
     },
@@ -551,12 +553,12 @@ export async function createPrismaStore(): Promise<ContentStore> {
       };
     },
     async getAdminBootstrap(siteId?: number) {
-      const bootstrap = await this.getBootstrap(siteId);
+      const bootstrap = await store.getBootstrap(siteId);
       const resolvedSiteId = bootstrap.site.id;
       const [mediaAssets, floatingPurchases, allReviews] = await Promise.all([
-        this.listMediaAssets(undefined, resolvedSiteId),
-        this.listFloatingPurchases(resolvedSiteId),
-        this.listReviews(resolvedSiteId),
+        store.listMediaAssets(undefined, resolvedSiteId),
+        store.listFloatingPurchases(resolvedSiteId),
+        store.listReviews(resolvedSiteId),
       ]);
       return {
         ...bootstrap,
@@ -565,7 +567,7 @@ export async function createPrismaStore(): Promise<ContentStore> {
         allReviews,
         floatingPurchases,
         authenticated: true,
-        sites: await this.listSites(),
+        sites: await store.listSites(),
         activeSiteId: bootstrap.site.id,
       };
     },
@@ -672,6 +674,8 @@ export async function createPrismaStore(): Promise<ContentStore> {
       return result.count > 0;
     },
   };
+
+  return store;
 }
 
 export { client as prismaClient, ensureSeed };

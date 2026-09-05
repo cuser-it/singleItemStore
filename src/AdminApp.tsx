@@ -236,7 +236,7 @@ export function AdminApp() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const [data, skuData, orderData, payData] = await Promise.all([fetchAdminBootstrap(currentSiteId ?? undefined), fetchAdminSkus(currentSiteId ?? undefined), fetchAdminOrders(buildOrderParams()), fetchPaymentSettings(currentSiteId ?? undefined)]);
+      const [data, skuData, orderData, payData] = await Promise.all([fetchAdminBootstrap(currentSiteId ?? undefined), fetchAdminSkus(currentSiteId ?? undefined), fetchAdminOrders(buildOrderParams()), fetchPaymentSettings()]);
       setBootstrap(data);
       
       // 初始化时设置默认站点

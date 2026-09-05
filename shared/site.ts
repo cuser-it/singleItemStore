@@ -3,6 +3,21 @@ import type { ProductSku } from './order';
 export type MediaSection = 'hero' | 'detail';
 export type MediaSourceType = 'upload' | 'url';
 
+/**
+ * 商品规格模板。
+ * 注意：SKU 的主存储是 `ProductSku` 表，这里仅用于站点初始化时派生初始 SKU，
+ * 不参与后续的 SKU 更新（避免覆盖后台手工编辑过的数据）。
+ */
+export type ProductVariant = {
+  id: string;
+  name: string;
+  subtitle: string;
+  price: number;
+  originalPrice: number;
+  saleLabel: string;
+  highlight?: string;
+};
+
 export type Site = {
   id: number;
   name: string;
@@ -103,7 +118,12 @@ export type SiteUpdateInput = {
   slug: string;
 };
 
-export type SiteSettingsUpdateInput = Omit<SiteSettings, 'id' | 'siteId' | 'createdAt' | 'updatedAt'>;
+/**
+ * 站点设置更新入参。
+ * 不包含 salePrice / originalPrice / productVariants：价格与规格的主存储是 `ProductSku` 表，
+ * 由 SKU 管理接口维护，不再通过站点设置接口写入（与两个 store 的实际行为保持一致）。
+ */
+export type SiteSettingsUpdateInput = Omit<SiteSettings, 'id' | 'siteId' | 'createdAt' | 'updatedAt' | 'salePrice' | 'originalPrice' | 'productVariants'>;
 
 export type MediaAssetInput = {
   section: MediaSection;

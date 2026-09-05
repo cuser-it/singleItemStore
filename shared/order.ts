@@ -58,6 +58,8 @@ export type Order = {
   deletedAt?: string;
   deletedBy?: string;
   deletionReason?: string;
+  /** 下单幂等键（仅内存模式下随订单一起保存，Prisma 模式存于数据库列） */
+  idempotencyKey?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -80,6 +82,7 @@ export type PaymentCreateResult = {
 };
 
 export type OrderFilters = {
+  siteId?: number;
   page?: number;
   pageSize?: number;
   query?: string;

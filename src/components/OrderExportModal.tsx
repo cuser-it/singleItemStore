@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Modal, Form, DatePicker, Checkbox, Button, Space, Radio, message } from 'antd';
-import type { CheckboxValueType } from 'antd/es/checkbox/Group';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -57,7 +56,7 @@ export function OrderExportModal({ visible, onCancel, onExport }: OrderExportMod
   const [loading, setLoading] = useState(false);
   const [timeRangeType, setTimeRangeType] = useState<'preset' | 'custom'>('preset');
   const [presetRange, setPresetRange] = useState<string>('24h');
-  const [selectedColumns, setSelectedColumns] = useState<CheckboxValueType[]>(DEFAULT_COLUMNS);
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_COLUMNS);
 
   const handleOk = async () => {
     try {
