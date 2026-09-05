@@ -286,7 +286,7 @@ function DRu() {
           <Carousel autoplay autoplaySpeed={2500} dots={{ className: 'hero-dots' }}>
             {heroImages.map((image, index) => (
               <div className="slide" key={image.id}>
-                <ProgressiveImage src={image.resolvedUrl} alt={image.alt} draggable={false} loading={index === 0 ? 'eager' : 'lazy'} fetchPriority={index === 0 ? 'high' : 'auto'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <ProgressiveImage src={image.resolvedUrl} alt={image.alt} draggable={false} decoding="async" loading={index === 0 ? 'eager' : 'lazy'} fetchPriority={index === 0 ? 'high' : 'auto'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             ))}
           </Carousel>

@@ -8,6 +8,35 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // 提前发起前台 bootstrap 请求并预加载首张轮播图，避免 JS bundle → API → 图片的串行瓶颈（LCP 优化）
+      (function () {
+        var path = location.pathname;
+        if (path.indexOf('/admin') === 0 || path === '/payment/return') return;
+        var slug = path === '/' ? '' : path.slice(1);
+        var url = slug ? '/api/public/bootstrap?slug=' + encodeURIComponent(slug) : '/api/public/bootstrap';
+        window.__BOOTSTRAP_SLUG__ = slug;
+        window.__BOOTSTRAP_PROMISE__ = fetch(url, { credentials: 'include' })
+          .then(function (res) {
+            if (!res.ok) throw new Error('bootstrap failed: ' + res.status);
+            return res.json();
+          })
+          .then(function (data) {
+            var hero = data && data.heroImages && data.heroImages[0];
+            if (hero && hero.resolvedUrl) {
+              var link = document.createElement('link');
+              link.rel = 'preload';
+              link.as = 'image';
+              link.href = hero.resolvedUrl;
+              link.fetchPriority = 'high';
+              document.head.appendChild(link);
+            }
+            return data;
+          });
+        // 统一由 fetchPublicBootstrap 消费，这里先挂一个空 catch 避免 unhandledrejection
+        window.__BOOTSTRAP_PROMISE__.catch(function () {});
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

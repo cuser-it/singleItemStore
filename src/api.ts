@@ -30,7 +30,25 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
   return (await response.json()) as T;
 }
 
+declare global {
+  interface Window {
+    __BOOTSTRAP_PROMISE__?: Promise<PublicBootstrap>;
+    __BOOTSTRAP_SLUG__?: string;
+  }
+}
+
 export async function fetchPublicBootstrap(slug?: string) {
+  // index.html 中的内联脚本会在 JS bundle 加载前提前发起请求（LCP 优化），
+  // slug 一致时直接复用；只消费一次，失败则回退到正常请求
+  const preloaded = typeof window !== 'undefined' ? window.__BOOTSTRAP_PROMISE__ : undefined;
+  if (preloaded && window.__BOOTSTRAP_SLUG__ === (slug ?? '')) {
+    delete window.__BOOTSTRAP_PROMISE__;
+    try {
+      return await preloaded;
+    } catch {
+      // 预取失败，回退到常规请求
+    }
+  }
   const url = slug ? `/api/public/bootstrap?slug=${encodeURIComponent(slug)}` : '/api/public/bootstrap';
   return requestJson<PublicBootstrap>(url);
 }
