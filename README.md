@@ -94,6 +94,7 @@ npm start
 | `npm run build` | 构建前端到 `dist/` |
 | `npm run start:prod` | 生产启动：单进程同时提供 API 与 `dist/`，端口取 `PORT` |
 | `npm run deploy` | 装依赖 + prisma generate + migrate deploy + build |
+| `npm run start:panel` | 面板（1Panel）启动：自动补跑 prisma generate / migrate / 构建后再启动 |
 | `npm test` | 全量测试（Vitest） |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run verify` | typecheck + test，**提交前跑这个** |
@@ -144,6 +145,8 @@ npm run start:prod        # 建议交给 systemd / pm2 托管
 ```
 
 完整步骤、nginx 配置、systemd unit、上线自检清单见 **[`docs/deployment.md`](docs/deployment.md)**。
+
+用 **1Panel 面板**部署请看 **[`docs/deploy-1panel.md`](docs/deploy-1panel.md)**（含容器内数据库地址、运行环境启动命令等面板特有坑点），启动命令选 `start:panel`。
 
 其他文档：
 - [`docs/payment-configuration.md`](docs/payment-configuration.md) — 支付配置

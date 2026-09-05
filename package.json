@@ -11,6 +11,7 @@
     "server": "tsx server/index.ts",
     "start:prod": "tsx server/index.ts",
     "deploy": "npm ci && npx prisma generate && npx prisma migrate deploy && npm run build",
+    "start:panel": "node scripts/panel-start.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm run test"
