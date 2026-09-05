@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   App as AntApp,
@@ -15,11 +15,14 @@ import {
   Menu,
   Row,
   Select,
+  Segmented,
   Space,
   Spin,
   Statistic,
   Switch,
   Table,
+  Tabs,
+  Radio,
   Tag,
   Typography,
   Upload,
@@ -51,6 +54,7 @@ import {
   type SiteSettingsUpdateInput,
 } from '../shared/site';
 import type { Order, PaymentSettings, ProductSku, ProductSkuInput } from '../shared/order';
+import { resolveMediaUrl } from '../shared/site';
 import {
   activateSite,
   createFloatingPurchase,
@@ -65,6 +69,7 @@ import {
   fetchAdminMe,
   loginAdmin,
   logoutAdmin,
+  saveHeroMediaMode,
   saveSiteSettings,
   updateFloatingPurchase,
   updateMediaAsset,
@@ -85,7 +90,12 @@ import {
   softDeleteOrder,
   exportOrders,
 } from './api';
+import { captureVideoPoster } from './videoPoster';
 import { useAdminRouter, getPageKey, ADMIN_ROUTES } from './AdminRouter';
+
+export function beijingToday(now = new Date()) {
+  return new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 
 function formatPaymentStatus(value: string) {
   const labels: Record<string, string> = {
@@ -107,6 +117,8 @@ function formatFulfillmentStatus(value: string) {
 }
 
 type MediaDraft = {
+  kind: 'image' | 'video';
+  posterSource: string;
   id?: number;
   section: MediaSection;
   sourceType: 'upload' | 'url';
@@ -117,6 +129,7 @@ type MediaDraft = {
 };
 
 type ReviewDraft = {
+  displayDate: string;
   id?: number;
   name: string;
   content: string;
@@ -196,14 +209,25 @@ export function AdminApp() {
   const [loading, setLoading] = useState(false);
   const [drawer, setDrawer] = useState<'settings' | 'site' | 'media' | 'review' | 'purchase' | 'sku' | 'payment' | null>(null);
   const [siteDraft, setSiteDraft] = useState<SiteDraft>({ name: '', slug: '', templateSiteId: undefined });
-  const [mediaDraft, setMediaDraft] = useState<MediaDraft>({ section: 'hero', sourceType: 'url', source: '', alt: '', sortOrder: 1, enabled: true });
-  const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ name: '', content: '', images: '', featuredOnHome: false, homeOrder: 0, enabled: true });
+  const [mediaDraft, setMediaDraft] = useState<MediaDraft>({ kind: 'image', posterSource: '', section: 'hero', sourceType: 'url', source: '', alt: '', sortOrder: 1, enabled: true });
+  const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ displayDate: beijingToday(), name: '', content: '', images: '', featuredOnHome: false, homeOrder: 0, enabled: true });
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft>({ content: '', enabled: true, sortOrder: 0 });
   const [reviewStatusFilter, setReviewStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
   const [mediaStatusFilter, setMediaStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
-  const [mediaSectionFilter, setMediaSectionFilter] = useState<'all' | MediaSection>('all');
+  const [mediaTab, setMediaTab] = useState<MediaSection>('hero');
   const [reviewQuery, setReviewQuery] = useState('');
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [modeBusy, setModeBusy] = useState(false);
+  const operationLock = useRef(false);
+  const siteEpoch = useRef(0);
+  const drawerEpoch = useRef(0);
+  const refreshVersion = useRef(0);
+  const siteIdRef = useRef(currentSiteId);
+  const mounted = useRef(true);
+  const heroMode = settings?.heroMediaMode ?? 'image';
+  const heroModeRef = useRef(heroMode);
+  heroModeRef.current = heroMode;
+  useEffect(() => () => { mounted.current = false; siteEpoch.current++; drawerEpoch.current++; }, []);
   const [selectedReviewIds, setSelectedReviewIds] = useState<number[]>([]);
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
   const [selectedPurchaseIds, setSelectedPurchaseIds] = useState<number[]>([]);
@@ -242,9 +266,12 @@ export function AdminApp() {
   };
 
   const refresh = async () => {
+    const epoch = siteEpoch.current;
+    const version = ++refreshVersion.current;
     setLoading(true);
     try {
       const [data, skuData, orderData, payData] = await Promise.all([fetchAdminBootstrap(currentSiteId ?? undefined), fetchAdminSkus(currentSiteId ?? undefined), fetchAdminOrders(buildOrderParams()), fetchPaymentSettings()]);
+      if (!mounted.current || epoch !== siteEpoch.current || version !== refreshVersion.current) return;
       setBootstrap(data);
       
       // 初始化时设置默认站点
@@ -260,7 +287,7 @@ export function AdminApp() {
       setOrderTotal(orderData.total);
       setPaymentSettings(payData);
     } finally {
-      setLoading(false);
+      if (mounted.current && epoch === siteEpoch.current && version === refreshVersion.current) setLoading(false);
     }
   };
 
@@ -279,6 +306,13 @@ export function AdminApp() {
   }, [currentSiteId]);
 
   const updateSiteId = (siteId: number) => {
+    siteEpoch.current++;
+    siteIdRef.current = siteId;
+    operationLock.current = false;
+    setMediaBusy(false);
+    setModeBusy(false);
+    setSelectedMediaIds([]);
+    closeDrawer();
     setCurrentSiteId(siteId);
     const params = new URLSearchParams(window.location.search);
     params.set('siteId', String(siteId));
@@ -287,21 +321,27 @@ export function AdminApp() {
   };
 
   const closeDrawer = () => {
+    drawerEpoch.current++;
     setDrawer(null);
-    setUploadFile(null);
   };
   const openSettings = () => setDrawer('settings');
   const openSite = (site?: Site) => {
     setSiteDraft(site ? { id: site.id, name: site.name, slug: site.slug } : { name: '', slug: '', templateSiteId: bootstrap?.activeSiteId });
     setDrawer('site');
   };
-  const openMedia = (item?: MediaAsset, section: MediaSection = 'hero') => {
+  const canEditMedia = (section: MediaSection, kind: 'image' | 'video') =>
+    !loading && !operationLock.current && (section === 'detail' || heroModeRef.current === kind);
+  const openMedia = (item?: MediaAsset, section: MediaSection = mediaTab, kind: 'image' | 'video' = 'image') => {
+    section = item?.section ?? section;
+    kind = item?.kind ?? kind;
+    if (!canEditMedia(section, kind)) return;
+    drawerEpoch.current++;
     const defaultOrder = section === 'hero' ? (bootstrap?.heroImages.length ?? 0) + 1 : (bootstrap?.detailImages.length ?? 0) + 1;
-    setMediaDraft(item ? { id: item.id, section: item.section, sourceType: item.sourceType, source: item.source, alt: item.alt, sortOrder: item.sortOrder, enabled: item.enabled } : { section, sourceType: 'url', source: '', alt: '', sortOrder: defaultOrder, enabled: true });
+    setMediaDraft(item ? { id: item.id, kind, posterSource: item.posterSource ?? '', section, sourceType: item.sourceType, source: item.source, alt: item.alt, sortOrder: item.sortOrder, enabled: item.enabled } : { section, kind, posterSource: '', sourceType: 'url', source: '', alt: '', sortOrder: kind === 'video' ? 1 : defaultOrder, enabled: true });
     setDrawer('media');
   };
   const openReview = (item?: Review) => {
-    setReviewDraft(item ? { id: item.id, name: item.name, content: item.content, images: item.images.join('\n'), featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled } : { name: '', content: '', images: '', featuredOnHome: true, homeOrder: (bootstrap?.allReviews.length ?? 0) + 1, enabled: true });
+    setReviewDraft(item ? { displayDate: item.displayDate ?? '', id: item.id, name: item.name, content: item.content, images: item.images.join('\n'), featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled } : { displayDate: beijingToday(), name: '', content: '', images: '', featuredOnHome: true, homeOrder: (bootstrap?.allReviews.length ?? 0) + 1, enabled: true });
     setDrawer('review');
   };
   const openPurchase = (item?: FloatingPurchase) => {
@@ -388,49 +428,128 @@ export function AdminApp() {
       });
     }
   };
-  const handleUploadSelected = async (file: File) => {
+  // Capture site/drawer identity before every async operation. Uploading never persists a record.
+  const handleUploadSelected = async (file: File, poster = false) => {
+    if (operationLock.current) return;
+    const isMedia = drawer === 'media';
+    if (isMedia && !canEditMedia(mediaDraft.section, mediaDraft.kind)) return;
+    if (isMedia && mediaDraft.kind === 'video' && !poster &&
+      (!/\.mp4$/i.test(file.name) || (file.type !== '' && file.type !== 'video/mp4') || file.size > 50 * 1024 * 1024)) {
+      message.error('视频必须为 MP4，且不超过 50MB');
+      return;
+    }
+    if ((poster || (isMedia && mediaDraft.kind === 'image')) && !file.type.startsWith('image/')) {
+      message.error('请选择图片文件');
+      return;
+    }
+    const epoch = siteEpoch.current;
+    const draftEpoch = drawerEpoch.current;
+    const siteId = siteIdRef.current;
+    const valid = () => mounted.current && epoch === siteEpoch.current && draftEpoch === drawerEpoch.current;
+    operationLock.current = true;
+    setMediaBusy(true);
+    const options = { siteId, section: mediaDraft.section, kind: mediaDraft.kind };
+    let objectUrl: string | undefined;
     try {
-      const result = await uploadAsset(file);
+      const result = await uploadAsset(file, isMedia ? { ...options, ...(poster ? { purpose: 'poster' as const } : {}) } : { siteId });
+      if (!valid()) return;
       if (drawer === 'review') {
         setReviewDraft((draft) => ({ ...draft, images: draft.images ? `${draft.images}\n${result.source}` : result.source }));
       } else if (drawer === 'settings') {
-        // 同时写入 Form 字段（提交时以 Form 值为准）与本地 settings（用于预览）
         settingsFormInstance.setFieldValue('customerServiceQrCode', result.resolvedUrl);
         setSettings((prev) => prev ? { ...prev, customerServiceQrCode: result.resolvedUrl } : null);
+      } else if (poster) {
+        setMediaDraft((draft) => ({ ...draft, posterSource: result.source }));
+      } else if (mediaDraft.kind === 'video') {
+        let posterSource = '';
+        try {
+          const capture = await captureVideoPoster(file);
+          objectUrl = capture.objectUrl;
+          if (!valid()) return;
+          const uploadedPoster = await uploadAsset(capture.file, { ...options, purpose: 'poster' });
+          if (!valid()) return;
+          posterSource = uploadedPoster.source;
+        } catch {
+          if (!valid()) return;
+          message.warning('自动封面生成或上传失败，请手动上传封面后再保存');
+        }
+        setMediaDraft((draft) => ({ ...draft, source: result.source, sourceType: 'upload', posterSource }));
       } else {
         setMediaDraft((draft) => ({ ...draft, source: result.source, sourceType: 'upload' }));
       }
-      setUploadFile(null);
-      message.success('图片上传成功，链接已填入');
+      message.success('上传完成，请保存素材');
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '图片上传失败');
+      if (valid()) message.error(error instanceof Error ? error.message : '上传失败');
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (epoch === siteEpoch.current && mounted.current) {
+        operationLock.current = false;
+        setMediaBusy(false);
+      }
+    }
+  };
+
+  const handleModeChange = async (mode: 'image' | 'video') => {
+    if (operationLock.current || loading || mode === heroMode) return;
+    const previous = heroMode;
+    const epoch = siteEpoch.current;
+    operationLock.current = true;
+    heroModeRef.current = mode;
+    setModeBusy(true);
+    setSelectedMediaIds([]);
+    closeDrawer();
+    setSettings((prev) => prev ? { ...prev, heroMediaMode: mode } : null);
+    try {
+      await saveHeroMediaMode(siteIdRef.current, mode);
+      if (epoch !== siteEpoch.current || !mounted.current) return;
+      setBootstrap((prev) => prev ? { ...prev, settings: { ...prev.settings, heroMediaMode: mode } } : null);
+    } catch (error) {
+      if (epoch !== siteEpoch.current || !mounted.current) return;
+      heroModeRef.current = previous;
+      setSettings((prev) => prev ? { ...prev, heroMediaMode: previous } : null);
+      message.error(error instanceof Error ? error.message : '模式保存失败，已恢复原模式');
+    } finally {
+      if (epoch === siteEpoch.current && mounted.current) {
+        operationLock.current = false;
+        setModeBusy(false);
+      }
     }
   };
 
   const handleMediaSave = async () => {
+    if (!canEditMedia(mediaDraft.section, mediaDraft.kind)) return;
+    const source = mediaDraft.source.trim();
+    if (!source) { message.warning('请上传素材或填写地址'); return; }
+    if (mediaDraft.kind === 'video' && !mediaDraft.posterSource.trim()) {
+      message.warning('请手动上传或填写视频封面后再保存'); return;
+    }
+    if (mediaDraft.section === 'hero' && mediaDraft.kind === 'image' && !mediaDraft.id && (bootstrap?.heroImages.length ?? 0) >= 15) {
+      message.warning('首页轮播图最多 15 张'); return;
+    }
+    const epoch = siteEpoch.current;
+    const draftEpoch = drawerEpoch.current;
+    operationLock.current = true;
+    setMediaBusy(true);
     try {
-      const source = mediaDraft.source;
-      if (!source.trim()) {
-        message.warning('请上传图片或填写图片地址');
-        return;
-      }
-      const payload = { ...mediaDraft, source, siteId: currentSiteId };
-      if (mediaDraft.section === 'hero' && !mediaDraft.id && (bootstrap?.heroImages.length ?? 0) >= 15) {
-        message.warning('首页轮播图最多 15 张');
-        return;
-      }
+      const payload = { ...mediaDraft, source, posterSource: mediaDraft.posterSource.trim() || null, siteId: siteIdRef.current };
       if (mediaDraft.id) await updateMediaAsset(mediaDraft.id, payload); else await createMediaAsset(payload);
+      if (epoch !== siteEpoch.current || draftEpoch !== drawerEpoch.current || !mounted.current) return;
       closeDrawer();
       await refresh();
-      message.success(mediaDraft.id ? '图片已保存' : '图片已添加');
+      if (epoch === siteEpoch.current) message.success('素材已保存');
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '图片保存失败');
+      if (epoch === siteEpoch.current && mounted.current) message.error(error instanceof Error ? error.message : '素材保存失败');
+    } finally {
+      if (epoch === siteEpoch.current && mounted.current) {
+        operationLock.current = false;
+        setMediaBusy(false);
+      }
     }
   };
   const handleReviewSave = async () => {
     try {
       const images = reviewDraft.images.split('\n').map((item) => item.trim()).filter(Boolean);
-      const payload = { ...reviewDraft, images, siteId: currentSiteId };
+      const payload = { ...reviewDraft, displayDate: reviewDraft.displayDate || null, images, siteId: currentSiteId };
       if (reviewDraft.id) await updateReview(reviewDraft.id, payload); else await createReview(payload);
       closeDrawer();
       await refresh();
@@ -612,10 +731,10 @@ export function AdminApp() {
   );
 
   const isDesktop = useIsDesktop();
-  const allMediaAssets = (bootstrap?.heroImages ?? []).concat(bootstrap?.detailImages ?? []);
+  const allMediaAssets = (bootstrap?.heroImages ?? []).concat(bootstrap?.heroVideo ? [bootstrap.heroVideo] : [], bootstrap?.detailImages ?? []);
   const mediaAssets = allMediaAssets.filter((item) => {
     const statusMatch = mediaStatusFilter === 'all' || (mediaStatusFilter === 'enabled' ? item.enabled : !item.enabled);
-    const sectionMatch = mediaSectionFilter === 'all' || item.section === mediaSectionFilter;
+    const sectionMatch = item.section === mediaTab;
     return statusMatch && sectionMatch;
   });
   const reviews = (bootstrap?.allReviews ?? []).filter((item) => {
@@ -629,7 +748,7 @@ export function AdminApp() {
     { key: 'skus', icon: <TagsOutlined />, label: '商品规格' },
     { key: 'payment', icon: <SettingOutlined />, label: '支付配置' },
     { key: 'settings', icon: <SettingOutlined />, label: '站点管理' },
-    { key: 'media', icon: <FileImageOutlined />, label: '图片管理' },
+    { key: 'media', icon: <FileImageOutlined />, label: '媒体管理' },
     { key: 'reviews', icon: <FormOutlined />, label: '评价管理' },
     { key: 'purchases', icon: <TagsOutlined />, label: '浮层文案管理' },
   ];
@@ -641,8 +760,25 @@ export function AdminApp() {
   const settingsInitialValues = settings ? { ...settings, guarantee: settings.guarantee.join('\n'), reviewTags: settings.reviewTags.join('\n'), paymentSuccessMessage: settings.paymentSuccessMessage || '添加客服领取服用说明', customerServiceUrl: settings.customerServiceUrl || '', customerServiceQrCode: settings.customerServiceQrCode || '' } : undefined;
   const settingsForm = settings ? <Form form={settingsFormInstance} layout="vertical" initialValues={settingsInitialValues} onFinish={handleSettingsSave}><Alert type="info" message="价格管理已迁移至 SKU 管理页面" description="请在 SKU 管理中修改商品价格" showIcon style={{ marginBottom: 16 }} /><Row gutter={20}><Col span={24}><Form.Item name="shopName" label="店铺名"><Input /></Form.Item></Col><Col span={12}><Form.Item name="title" label="标题"><Input /></Form.Item></Col><Col span={12}><Form.Item name="subtitle" label="副标题"><Input /></Form.Item></Col><Col span={24}><Form.Item name="productDescription" label="描述"><Input.TextArea rows={3} /></Form.Item></Col><Col span={24}><Form.Item name="marqueeText" label="滚动文案"><Input /></Form.Item></Col><Col span={12}><Form.Item name="shippingNote" label="邮费说明"><Input /></Form.Item></Col><Col span={12}><Form.Item name="shippingTime" label="发货时间"><Input /></Form.Item></Col><Col span={24}><Form.Item name="guarantee" label="保障文案，每行一个"><Input.TextArea rows={3} /></Form.Item></Col><Col span={24}><Form.Item name="reviewTags" label="评价标签，每行一个"><Input.TextArea rows={2} /></Form.Item></Col><Col span={24}><Form.Item name="reminder" label="提示语"><Input /></Form.Item></Col><Col span={24}><Form.Item name="paymentSuccessMessage" label="支付成功引导文案"><Input placeholder="添加客服领取服用说明" /></Form.Item></Col><Col span={24}><Form.Item name="customerServiceQrCode" label="客服二维码图片" extra="上传客服微信二维码（建议尺寸 400x400）"><Input placeholder="图片 URL" /><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1} style={{ marginTop: '8px' }}><Button icon={<UploadOutlined />}>上传二维码</Button></Upload>{settings.customerServiceQrCode && <div style={{ marginTop: '12px' }}><img src={settings.customerServiceQrCode} alt="客服二维码预览" style={{ width: '120px', height: '120px', border: '1px solid #e5e7eb', borderRadius: '8px' }} /></div>}</Form.Item></Col><Col span={24}><Form.Item name="customerServiceUrl" label="客服微信链接" extra="支持微信直链，与二维码至少填写一个"><Input placeholder="weixin://dl/business/?t=xxxxx" /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">保存配置</Button></Space></Form> : null;
   const siteForm = <Form layout="vertical" onFinish={handleSiteSave}><Form.Item label="站点名称" required><Input value={siteDraft.name} onChange={(event) => setSiteDraft({ ...siteDraft, name: event.target.value })} placeholder="例如 华东商城" /></Form.Item><Form.Item label="站点标识" required><Input value={siteDraft.slug} onChange={(event) => setSiteDraft({ ...siteDraft, slug: event.target.value })} placeholder="例如 east-store" /></Form.Item>{siteDraft.id ? null : <Form.Item label="复制模板"><Select value={siteDraft.templateSiteId} onChange={(templateSiteId) => setSiteDraft({ ...siteDraft, templateSiteId })} options={(bootstrap?.sites ?? []).map((site) => ({ value: site.id, label: site.name }))} /></Form.Item>}<Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{siteDraft.id ? '保存站点' : '创建站点'}</Button></Space></Form>;
-  const mediaForm = <Form layout="vertical" onFinish={handleMediaSave}><Row gutter={20}><Col span={12}><Form.Item label="区域"><Select value={mediaDraft.section} onChange={(section) => setMediaDraft({ ...mediaDraft, section })} options={[{ value: 'hero', label: '首页轮播' }, { value: 'detail', label: '详情图片' }]} /></Form.Item></Col><Col span={12}><Form.Item label="来源类型"><Select value={mediaDraft.sourceType} onChange={(sourceType) => setMediaDraft({ ...mediaDraft, sourceType })} options={[{ value: 'url', label: 'URL' }, { value: 'upload', label: '上传' }]} /></Form.Item></Col><Col span={24}><Form.Item label="图片地址"><Input value={mediaDraft.source} onChange={(event) => setMediaDraft({ ...mediaDraft, source: event.target.value })} placeholder="https://... 或 /img/..." /></Form.Item></Col><Col span={24}><Form.Item label="上传文件"><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1}><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item></Col><Col span={12}><Form.Item label="替代文本"><Input value={mediaDraft.alt} onChange={(event) => setMediaDraft({ ...mediaDraft, alt: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="排序"><Input type="number" value={mediaDraft.sortOrder} onChange={(event) => setMediaDraft({ ...mediaDraft, sortOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={24}><Space><Switch checked={mediaDraft.enabled} onChange={(enabled) => setMediaDraft({ ...mediaDraft, enabled })} />启用</Space></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{mediaDraft.id ? '保存修改' : '新增图片'}</Button></Space></Form>;
-  const reviewForm = <Form layout="vertical" onFinish={handleReviewSave}><Form.Item label="用户名"><Input value={reviewDraft.name} onChange={(event) => setReviewDraft({ ...reviewDraft, name: event.target.value })} /></Form.Item><Form.Item label="内容"><Input.TextArea rows={4} value={reviewDraft.content} onChange={(event) => setReviewDraft({ ...reviewDraft, content: event.target.value })} /></Form.Item><Form.Item label="图片地址，每行一个"><Input.TextArea rows={3} value={reviewDraft.images} onChange={(event) => setReviewDraft({ ...reviewDraft, images: event.target.value })} /></Form.Item><Form.Item label="上传评价图片"><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1}><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item><Row gutter={20}><Col span={12}><Form.Item label="排序"><Input type="number" value={reviewDraft.homeOrder} onChange={(event) => setReviewDraft({ ...reviewDraft, homeOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={12}><Form.Item label="首页展示"><Switch checked={reviewDraft.featuredOnHome} onChange={(featuredOnHome) => setReviewDraft({ ...reviewDraft, featuredOnHome })} /></Form.Item></Col><Col span={12}><Form.Item label="启用"><Switch checked={reviewDraft.enabled} onChange={(enabled) => setReviewDraft({ ...reviewDraft, enabled })} /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{reviewDraft.id ? '保存修改' : '新增评价'}</Button></Space></Form>;
+  const mediaForm = <Form layout="vertical" onFinish={handleMediaSave} disabled={mediaBusy || modeBusy || (mediaDraft.section === 'hero' && mediaDraft.kind !== heroMode)}>
+    <Form.Item label="区域"><Input aria-label="素材区域" readOnly value={mediaDraft.section === 'hero' ? '首页媒体' : '商品详情图'} /></Form.Item>
+    <Form.Item label="来源类型"><Select aria-label="来源类型" value={mediaDraft.sourceType} onChange={(sourceType) => setMediaDraft({ ...mediaDraft, sourceType })} options={[{ value: 'url', label: 'URL' }, { value: 'upload', label: '上传' }]} /></Form.Item>
+    <Form.Item label={mediaDraft.kind === 'video' ? '视频地址' : '图片地址'}><Input aria-label="素材地址" value={mediaDraft.source} onChange={(event) => setMediaDraft({ ...mediaDraft, source: event.target.value, sourceType: 'url', ...(mediaDraft.kind === 'video' ? { posterSource: '' } : {}) })} placeholder="https://... 或 /uploads/..." /></Form.Item>
+    <Form.Item label="上传文件" extra={mediaDraft.kind === 'video' ? '仅 MP4，最大 50MB；自动截取首帧作为封面，失败时请手动上传封面。' : undefined}>
+      <Upload accept={mediaDraft.kind === 'video' ? 'video/mp4,.mp4' : 'image/*'} showUploadList={false} disabled={mediaBusy} beforeUpload={(file) => { void handleUploadSelected(file); return false; }}><Button icon={<UploadOutlined />}>{mediaDraft.kind === 'video' ? '上传 / 替换视频' : '选择文件'}</Button></Upload>
+    </Form.Item>
+    {mediaDraft.kind === 'video' && <>
+      <Form.Item label="视频封面" required extra="外链视频必须手动提供封面。更换视频地址会清空旧封面。"><Input aria-label="视频封面地址" value={mediaDraft.posterSource} onChange={(event) => setMediaDraft({ ...mediaDraft, posterSource: event.target.value })} /></Form.Item>
+      <Upload accept="image/*" showUploadList={false} disabled={mediaBusy} beforeUpload={(file) => { void handleUploadSelected(file, true); return false; }}><Button>上传 / 更换封面</Button></Upload>
+      {mediaDraft.posterSource && <img src={resolveMediaUrl(mediaDraft.posterSource)} alt="视频封面预览" style={{ width: 160, display: 'block' }} />}
+      {mediaDraft.source && <video aria-label="视频预览" src={resolveMediaUrl(mediaDraft.source)} poster={mediaDraft.posterSource ? resolveMediaUrl(mediaDraft.posterSource) : undefined} controls preload="metadata" style={{ width: '100%', maxHeight: 280 }} />}
+    </>}
+    <Form.Item label="替代文本"><Input aria-label="替代文本" value={mediaDraft.alt} onChange={(event) => setMediaDraft({ ...mediaDraft, alt: event.target.value })} /></Form.Item>
+    {mediaDraft.kind === 'image' && <Form.Item label="排序"><Input type="number" value={mediaDraft.sortOrder} onChange={(event) => setMediaDraft({ ...mediaDraft, sortOrder: Number(event.target.value) })} /></Form.Item>}
+    <Form.Item label="启用"><Switch aria-label="素材启用" checked={mediaDraft.enabled} onChange={(enabled) => setMediaDraft({ ...mediaDraft, enabled })} /></Form.Item>
+    <Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit" loading={mediaBusy} disabled={mediaBusy || modeBusy}>保存素材</Button></Space>
+  </Form>;
+  const reviewForm = <Form layout="vertical" onFinish={handleReviewSave}><Form.Item label="展示日期（北京时间）"><Input aria-label="展示日期" type="date" value={reviewDraft.displayDate} onChange={(event) => setReviewDraft({ ...reviewDraft, displayDate: event.target.value })} /></Form.Item><Form.Item label="用户名"><Input value={reviewDraft.name} onChange={(event) => setReviewDraft({ ...reviewDraft, name: event.target.value })} /></Form.Item><Form.Item label="内容"><Input.TextArea rows={4} value={reviewDraft.content} onChange={(event) => setReviewDraft({ ...reviewDraft, content: event.target.value })} /></Form.Item><Form.Item label="图片地址，每行一个"><Input.TextArea rows={3} value={reviewDraft.images} onChange={(event) => setReviewDraft({ ...reviewDraft, images: event.target.value })} /></Form.Item><Form.Item label="上传评价图片"><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1}><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item><Row gutter={20}><Col span={12}><Form.Item label="排序"><Input type="number" value={reviewDraft.homeOrder} onChange={(event) => setReviewDraft({ ...reviewDraft, homeOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={12}><Form.Item label="首页展示"><Switch checked={reviewDraft.featuredOnHome} onChange={(featuredOnHome) => setReviewDraft({ ...reviewDraft, featuredOnHome })} /></Form.Item></Col><Col span={12}><Form.Item label="启用"><Switch checked={reviewDraft.enabled} onChange={(enabled) => setReviewDraft({ ...reviewDraft, enabled })} /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{reviewDraft.id ? '保存修改' : '新增评价'}</Button></Space></Form>;
   const purchaseForm = <Form layout="vertical" onFinish={handlePurchaseSave}><Form.Item label="文案"><Input value={purchaseDraft.content} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, content: event.target.value })} /></Form.Item><Form.Item label="排序"><Input type="number" value={purchaseDraft.sortOrder} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, sortOrder: Number(event.target.value) })} /></Form.Item><Form.Item label="启用"><Switch checked={purchaseDraft.enabled} onChange={(enabled) => setPurchaseDraft({ ...purchaseDraft, enabled })} /></Form.Item><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{purchaseDraft.id ? '保存修改' : '新增文案'}</Button></Space></Form>;
   const skuForm = <Form layout="vertical" onFinish={handleSkuSave}><Row gutter={20}><Col span={12}><Form.Item label="规格编码" required><Input value={skuDraft.skuCode} onChange={(event) => setSkuDraft({ ...skuDraft, skuCode: event.target.value })} placeholder="single" /></Form.Item></Col><Col span={12}><Form.Item label="规格名称" required><Input value={skuDraft.name} onChange={(event) => setSkuDraft({ ...skuDraft, name: event.target.value })} /></Form.Item></Col><Col span={24}><Form.Item label="副标题"><Input value={skuDraft.subtitle} onChange={(event) => setSkuDraft({ ...skuDraft, subtitle: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="售价"><Input value={skuDraft.price} onChange={(event) => setSkuDraft({ ...skuDraft, price: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="原价"><Input value={skuDraft.originalPrice} onChange={(event) => setSkuDraft({ ...skuDraft, originalPrice: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="价格标签"><Input value={skuDraft.saleLabel} onChange={(event) => setSkuDraft({ ...skuDraft, saleLabel: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="高亮"><Input value={skuDraft.highlight} onChange={(event) => setSkuDraft({ ...skuDraft, highlight: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="排序"><Input type="number" value={skuDraft.sortOrder} onChange={(event) => setSkuDraft({ ...skuDraft, sortOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={12}><Form.Item label="启用"><Switch checked={skuDraft.enabled} onChange={(enabled) => setSkuDraft({ ...skuDraft, enabled })} /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{skuDraft.id ? '保存规格' : '新增规格'}</Button></Space></Form>;
   const paymentForm = paymentSettings ? <Form layout="vertical" initialValues={{ ...paymentSettings, merchantSecret: '' }} onFinish={handlePaymentSettingsSave}><Form.Item name="gatewayUrl" label="网关地址" required><Input /></Form.Item><Form.Item name="merchantId" label="商户号" required><Input /></Form.Item><Form.Item name="merchantSecret" label={`商户密钥（当前 ${paymentSettings.secretMasked || '未设置'}）`}><Input.Password placeholder="留空则不修改" /></Form.Item><Form.Item name="enabledChannels" label="启用渠道"><Checkbox.Group options={[{ label: '支付宝', value: 'alipay' }, { label: '微信', value: 'wxpay' }]} /></Form.Item><Form.Item name="notifyUrl" label="回调地址" required extra="建议填相对路径（如 /api/payment/epay/notify）。支付网关会用下方的「站点公网地址」拼接出完整地址"><Input /></Form.Item><Form.Item name="returnUrl" label="返回地址" required extra="建议填写相对路径（如 /payment/return）。系统会自动拼接完整地址；若填写绝对地址，也只会取其路径部分"><Input placeholder="/payment/return" /></Form.Item><Form.Item name="publicBaseUrl" label="站点公网地址" extra="部署后填写对外访问的地址，如 https://shop.example.com 或 http://1.2.3.4:3001。支付成功后网关需要主动回调本服务来写入支付状态，因此这里必须是公网可访问的地址（不能是 localhost）。留空则使用买家下单时访问的域名。"><Input placeholder="https://shop.example.com" /></Form.Item><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">保存支付配置</Button></Space></Form> : null;
@@ -699,14 +835,45 @@ export function AdminApp() {
   ];
   const orderColumns: ColumnsType<Order> = [{ title: '订单号', dataIndex: 'orderNo' }, { title: '姓名', dataIndex: 'recipientName' }, { title: '手机号', dataIndex: 'phone' }, { title: '规格', dataIndex: 'skuName' }, { title: '数量', dataIndex: 'quantity' }, { title: '金额', dataIndex: 'totalAmount', render: (value: string) => `¥${value}` }, { title: '支付', dataIndex: 'paymentStatus', render: (value: string) => <Tag color={value === 'PAID' ? 'green' : value === 'REFUNDED' ? 'purple' : 'orange'}>{formatPaymentStatus(value)}</Tag> }, { title: '履约', dataIndex: 'fulfillmentStatus', render: (value: string) => <Tag color={value === 'SHIPPED' ? 'blue' : 'default'}>{formatFulfillmentStatus(value)}</Tag> }, { title: '物流', render: (_: unknown, item: Order) => item.logisticsNo ? `${item.logisticsCompany ?? ''} ${item.logisticsNo}` : '-' }, { title: '创建时间', dataIndex: 'createdAt', render: (value: string) => new Date(value).toLocaleString('zh-CN') }, { title: '操作', key: 'action', render: (_: unknown, item: Order) => <Space><Button type="link" onClick={() => modal.info({ title: item.orderNo, width: 720, content: <Descriptions column={1} bordered size="small"><Descriptions.Item label="商品">{item.productName}</Descriptions.Item><Descriptions.Item label="规格">{item.skuName}</Descriptions.Item><Descriptions.Item label="收货人">{item.recipientName}</Descriptions.Item><Descriptions.Item label="手机号">{item.phone}</Descriptions.Item><Descriptions.Item label="地址">{item.address}</Descriptions.Item><Descriptions.Item label="金额">¥{item.totalAmount}</Descriptions.Item><Descriptions.Item label="物流">{item.logisticsNo ? `${item.logisticsCompany ?? ''} ${item.logisticsNo}` : '-'}</Descriptions.Item><Descriptions.Item label="退款备注">{item.refundNote ?? '-'}</Descriptions.Item></Descriptions> })}>详情</Button><Button type="link" onClick={() => void handleShipOrder(item)} disabled={item.fulfillmentStatus === 'SHIPPED' || Boolean(item.deletedAt)}>发货并完成</Button><Button type="link" onClick={() => void handleRefundOrder(item)} disabled={Boolean(item.refundedAt) || Boolean(item.deletedAt)}>标记退款</Button><Button type="link" danger onClick={() => void handleSoftDeleteOrder(item)} disabled={Boolean(item.deletedAt)}>删除</Button></Space> }];
   const siteColumns: ColumnsType<Site> = [{ title: '站点', dataIndex: 'name' }, { title: '标识', dataIndex: 'slug' }, { title: '创建时间', dataIndex: 'createdAt', render: (value: string) => new Date(value).toLocaleString() }, { title: '状态', dataIndex: 'isActive', render: (isActive: boolean, site: Site) => <Switch size="small" checked={isActive} loading={switchingSiteIds.has(site.id)} onChange={async () => { await handleActivateSite(site); }} /> }, { title: '操作', key: 'action', render: (_: unknown, site: Site) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => openSite(site)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('站点', async () => { await deleteSite(site.id); })}>删除</Button></Space> }];
-  const reviewColumns: ColumnsType<Review> = [{ title: '用户', dataIndex: 'name', key: 'name', render: (name: string) => <Space><Tag color="blue">{name.slice(0, 1)}</Tag>{name}</Space> }, { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true }, { title: '图片', dataIndex: 'images', key: 'images', render: (images: string[]) => images[0] ? <img className="admin-table-thumb" src={images[0]} alt="评价图片" /> : <Text type="secondary">无图片</Text> }, { title: '首页展示', dataIndex: 'featuredOnHome', render: (value: boolean, item: Review) => <Switch size="small" checked={value} onChange={async (featuredOnHome) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled, siteId: currentSiteId }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '排序', dataIndex: 'homeOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean, item: Review) => <Switch size="small" checked={enabled} onChange={async (nextEnabled) => { await updateReview(item.id, { name: item.name, content: item.content, images: item.images, featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: nextEnabled, siteId: currentSiteId }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '操作', key: 'action', render: (_: unknown, item: Review) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => openReview(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('评价', async () => { await deleteReview(item.id, currentSiteId); })}>删除</Button></Space> }];
-  const mediaColumns: ColumnsType<MediaAsset> = [{ title: '预览', dataIndex: 'resolvedUrl', render: (url: string, item: MediaAsset) => url ? <img className="admin-table-thumb" src={url} alt={item.alt} /> : <Text type="secondary">无图片</Text> }, { title: '区域', dataIndex: 'section', render: (section: string) => section === 'hero' ? '首页轮播' : '详情图片' }, { title: '地址', dataIndex: 'resolvedUrl', ellipsis: true }, { title: '排序', dataIndex: 'sortOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'success' : 'default'}>{enabled ? '启用' : '禁用'}</Tag> }, { title: '操作', key: 'action', render: (_: unknown, item: MediaAsset) => <Space><Button type="link" onClick={() => openMedia(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('图片', async () => { await deleteMediaAsset(item.id, currentSiteId); })}>删除</Button></Space> }];
+  const reviewColumns: ColumnsType<Review> = [{ title: '用户', dataIndex: 'name', key: 'name', render: (name: string) => <Space><Tag color="blue">{name.slice(0, 1)}</Tag>{name}</Space> }, { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true }, { title: '图片', dataIndex: 'images', key: 'images', render: (images: string[]) => images[0] ? <img className="admin-table-thumb" src={images[0]} alt="评价图片" /> : <Text type="secondary">无图片</Text> }, { title: '展示日期', dataIndex: 'displayDate', render: (value: string | null) => value || '未设置' }, { title: '首页展示', dataIndex: 'featuredOnHome', render: (value: boolean, item: Review) => <Switch size="small" checked={value} onChange={async (featuredOnHome) => { await updateReview(item.id, { displayDate: item.displayDate ?? null, name: item.name, content: item.content, images: item.images, featuredOnHome, homeOrder: item.homeOrder, enabled: item.enabled, siteId: currentSiteId }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '排序', dataIndex: 'homeOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean, item: Review) => <Switch size="small" checked={enabled} onChange={async (nextEnabled) => { await updateReview(item.id, { displayDate: item.displayDate ?? null, name: item.name, content: item.content, images: item.images, featuredOnHome: item.featuredOnHome, homeOrder: item.homeOrder, enabled: nextEnabled, siteId: currentSiteId }); await refresh(); message.success('评价状态已更新'); }} /> }, { title: '操作', key: 'action', render: (_: unknown, item: Review) => <Space><Button type="link" icon={<EditOutlined />} onClick={() => openReview(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('评价', async () => { await deleteReview(item.id, currentSiteId); })}>删除</Button></Space> }];
+  const mutateMedia = async (items: MediaAsset[], action: 'delete' | 'enable' | 'disable', epoch = siteEpoch.current) => {
+    if (epoch !== siteEpoch.current || !items.length || !items.every(item => canEditMedia(item.section, item.kind ?? 'image'))) return;
+    const siteId = siteIdRef.current;
+    operationLock.current = true;
+    setMediaBusy(true);
+    try {
+      await Promise.all(items.map(item => action === 'delete' ? deleteMediaAsset(item.id, siteId) : updateMediaAsset(item.id, { ...mediaUpdatePayload(item, action === 'enable'), siteId })));
+      if (epoch !== siteEpoch.current || !mounted.current) return;
+      setSelectedMediaIds([]);
+      await refresh();
+    } catch (error) {
+      if (epoch === siteEpoch.current && mounted.current) message.error(error instanceof Error ? error.message : '素材操作失败');
+    } finally {
+      if (epoch === siteEpoch.current && mounted.current) {
+        operationLock.current = false;
+        setMediaBusy(false);
+      }
+    }
+  };
+  const confirmMediaDelete = (items: MediaAsset[]) => {
+    const epoch = siteEpoch.current;
+    modal.confirm({ title: '确定删除素材吗？', content: '删除后无法恢复。', okText: '确认删除', cancelText: '取消', onOk: () => mutateMedia(items, 'delete', epoch) });
+  };
+  const mediaColumns: ColumnsType<MediaAsset> = [
+    { title: '预览', dataIndex: 'resolvedUrl', render: (url: string, item: MediaAsset) => { const source = resolveMediaUrl(item.source || url); const poster = item.posterSource ? resolveMediaUrl(item.posterSource) : undefined; return item.kind === 'video' ? <video aria-label="已保存视频预览" src={source} poster={poster} controls preload="metadata" style={{ width: 200, maxHeight: 150 }} /> : <img className="admin-table-thumb" src={source} alt={item.alt} />; } },
+    { title: '区域', dataIndex: 'section', render: (section: string) => section === 'hero' ? '首页媒体' : '商品详情图' },
+    { title: '地址', dataIndex: 'resolvedUrl', ellipsis: true },
+    { title: '排序', dataIndex: 'sortOrder' },
+    { title: '状态', dataIndex: 'enabled', render: (enabled: boolean, item: MediaAsset) => <Switch aria-label={`启用素材 ${item.id}`} checked={enabled} disabled={!canEditMedia(item.section, item.kind ?? 'image')} onChange={(value) => void mutateMedia([item], value ? 'enable' : 'disable')} /> },
+    { title: '操作', render: (_: unknown, item: MediaAsset) => <Space><Button type="link" disabled={!canEditMedia(item.section, item.kind ?? 'image')} onClick={() => openMedia(item)}>编辑</Button><Button type="link" danger disabled={!canEditMedia(item.section, item.kind ?? 'image')} onClick={() => confirmMediaDelete([item])}>删除</Button></Space> },
+  ];
   const purchaseColumns: ColumnsType<FloatingPurchase> = [{ title: '文案', dataIndex: 'content' }, { title: '排序', dataIndex: 'sortOrder' }, { title: '状态', dataIndex: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'success' : 'default'}>{enabled ? '启用' : '禁用'}</Tag> }, { title: '操作', key: 'action', render: (_: unknown, item: FloatingPurchase) => <Space><Button type="link" onClick={() => openPurchase(item)}>编辑</Button><Button type="link" danger onClick={() => confirmDelete('浮层文案', async () => { await deleteFloatingPurchase(item.id, currentSiteId); })}>删除</Button></Space> }];
   const selectedReviewItems = reviews.filter((item) => selectedReviewIds.includes(item.id));
   const selectedMediaItems = mediaAssets.filter((item) => selectedMediaIds.includes(item.id));
   const selectedPurchaseItems = (bootstrap?.floatingPurchases ?? []).filter((item) => selectedPurchaseIds.includes(item.id));
 
   const reviewUpdatePayload = (item: Review, enabled: boolean) => ({
+    displayDate: item.displayDate ?? null,
     name: item.name,
     content: item.content,
     images: item.images,
@@ -717,6 +884,8 @@ export function AdminApp() {
   });
 
   const mediaUpdatePayload = (item: MediaAsset, enabled: boolean) => ({
+    kind: item.kind ?? 'image',
+    posterSource: item.posterSource ?? null,
     section: item.section,
     sourceType: item.sourceType,
     source: item.source,
@@ -737,15 +906,15 @@ export function AdminApp() {
   const handleBatchReviewEnable = () => confirmBulkAction('批量启用评价', `已选择 ${selectedReviewIds.length} 项，确认启用吗？`, async () => { await Promise.all(selectedReviewItems.map((item) => updateReview(item.id, reviewUpdatePayload(item, true)))); }, '评价已启用');
   const handleBatchReviewDisable = () => confirmBulkAction('批量禁用评价', `已选择 ${selectedReviewIds.length} 项，确认禁用吗？`, async () => { await Promise.all(selectedReviewItems.map((item) => updateReview(item.id, reviewUpdatePayload(item, false)))); }, '评价已禁用');
 
-  const handleBatchMediaDelete = () => confirmBulkAction('批量删除图片', `已选择 ${selectedMediaIds.length} 项，确认删除吗？`, async () => { await Promise.all(selectedMediaItems.map((item) => deleteMediaAsset(item.id, currentSiteId))); }, '图片已删除');
-  const handleBatchMediaEnable = () => confirmBulkAction('批量启用图片', `已选择 ${selectedMediaIds.length} 项，确认启用吗？`, async () => { await Promise.all(selectedMediaItems.map((item) => updateMediaAsset(item.id, mediaUpdatePayload(item, true)))); }, '图片已启用');
-  const handleBatchMediaDisable = () => confirmBulkAction('批量禁用图片', `已选择 ${selectedMediaIds.length} 项，确认禁用吗？`, async () => { await Promise.all(selectedMediaItems.map((item) => updateMediaAsset(item.id, mediaUpdatePayload(item, false)))); }, '图片已禁用');
+  const handleBatchMediaDelete = () => confirmMediaDelete(selectedMediaItems);
+  const handleBatchMediaEnable = () => void mutateMedia(selectedMediaItems, 'enable');
+  const handleBatchMediaDisable = () => void mutateMedia(selectedMediaItems, 'disable');
 
   const handleBatchPurchaseDelete = () => confirmBulkAction('批量删除文案', `已选择 ${selectedPurchaseIds.length} 项，确认删除吗？`, async () => { await Promise.all(selectedPurchaseItems.map((item) => deleteFloatingPurchase(item.id, currentSiteId))); }, '浮层文案已删除');
   const handleBatchPurchaseEnable = () => confirmBulkAction('批量启用文案', `已选择 ${selectedPurchaseIds.length} 项，确认启用吗？`, async () => { await Promise.all(selectedPurchaseItems.map((item) => updateFloatingPurchase(item.id, purchaseUpdatePayload(item, true)))); }, '浮层文案已启用');
   const handleBatchPurchaseDisable = () => confirmBulkAction('批量禁用文案', `已选择 ${selectedPurchaseIds.length} 项，确认禁用吗？`, async () => { await Promise.all(selectedPurchaseItems.map((item) => updateFloatingPurchase(item.id, purchaseUpdatePayload(item, false)))); }, '浮层文案已禁用');
   const reviewTable = <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedReviewIds, onChange: (keys) => setSelectedReviewIds(keys as number[]) }} title={() => renderBatchToolbar('评价', selectedReviewIds.length, handleBatchReviewDelete, handleBatchReviewEnable, handleBatchReviewDisable)} columns={reviewColumns} dataSource={reviews} loading={loading} pagination={{ pageSize: 8, showSizeChanger: true }} locale={{ emptyText: <Empty description="暂无评价" /> }} />;
-  const mediaTable = <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedMediaIds, onChange: (keys) => setSelectedMediaIds(keys as number[]) }} title={() => renderBatchToolbar('图片', selectedMediaIds.length, handleBatchMediaDelete, handleBatchMediaEnable, handleBatchMediaDisable)} columns={mediaColumns} dataSource={mediaAssets} loading={loading} pagination={{ pageSize: 8, showSizeChanger: true }} />;
+  const mediaTable = <Table aria-label={mediaTab === 'hero' ? '首页图片列表' : '商品详情图列表'} rowKey="id" rowSelection={{ selectedRowKeys: selectedMediaIds, onChange: (keys) => setSelectedMediaIds(keys as number[]), getCheckboxProps: (item) => ({ disabled: !canEditMedia(item.section, 'image') }) }} title={() => renderBatchToolbar('图片', canEditMedia(mediaTab, 'image') ? selectedMediaIds.length : 0, handleBatchMediaDelete, handleBatchMediaEnable, handleBatchMediaDisable)} columns={mediaColumns} dataSource={mediaAssets} loading={loading} pagination={{ pageSize: 8, showSizeChanger: true }} />;
   const purchaseTable = <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedPurchaseIds, onChange: (keys) => setSelectedPurchaseIds(keys as number[]) }} title={() => renderBatchToolbar('文案', selectedPurchaseIds.length, handleBatchPurchaseDelete, handleBatchPurchaseEnable, handleBatchPurchaseDisable)} columns={purchaseColumns} dataSource={bootstrap?.floatingPurchases ?? []} loading={loading} pagination={{ pageSize: 8 }} />;
   const content = activePage === 'dashboard' ? (
     <>
@@ -889,33 +1058,23 @@ export function AdminApp() {
           <Button icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'detail')}>
             添加详情图
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'hero')}>
-            添加轮播图
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'hero', heroMode)}>
+            {heroMode === 'video' ? '添加视频' : '添加轮播图'}
           </Button>
         </Space>
       </div>
-      <Card className="admin-filter-card">
-        <Space wrap>
-          <Select
-            aria-label="图片状态筛选"
-            value={mediaStatusFilter}
-            onChange={(value) => {
-              setMediaStatusFilter(value);
-              setSelectedMediaIds([]);
-            }}
-            options={[{ value: 'all', label: '全部状态' }, { value: 'enabled', label: '已启用' }, { value: 'disabled', label: '已禁用' }]}
-          />
-          <Select
-            aria-label="图片类型筛选"
-            value={mediaSectionFilter}
-            onChange={(value) => {
-              setMediaSectionFilter(value);
-              setSelectedMediaIds([]);
-            }}
-            options={[{ value: 'all', label: '全部图片' }, { value: 'hero', label: '轮播图' }, { value: 'detail', label: '详情图' }]}
-          />
-        </Space>
-      </Card>
+        <Card className="admin-filter-card">
+          <Space wrap>
+            <Tabs activeKey={mediaTab} onChange={(key) => { setMediaTab(key as MediaSection); setSelectedMediaIds([]); }} items={[{ key: 'hero', label: '首页媒体' }, { key: 'detail', label: '商品详情图' }]} />
+            {mediaTab === 'hero' && <Radio.Group aria-label="首页媒体模式" value={heroMode} onChange={(event) => void handleModeChange(event.target.value)} disabled={modeBusy} options={[{ value: 'image', label: '轮播图片' }, { value: 'video', label: '单个视频' }]} optionType="button" />}
+            <Select
+              aria-label="图片状态筛选"
+              value={mediaStatusFilter}
+              onChange={(value) => { setMediaStatusFilter(value); setSelectedMediaIds([]); }}
+              options={[{ value: 'all', label: '全部状态' }, { value: 'enabled', label: '已启用' }, { value: 'disabled', label: '已禁用' }]}
+            />
+          </Space>
+        </Card>
       <Card className="admin-content-card">
         {mediaTable}
       </Card>
@@ -957,7 +1116,7 @@ export function AdminApp() {
       </Card>
     </>
   );
-  const drawerTitle = drawer === 'settings' ? '编辑站点配置' : drawer === 'site' ? (siteDraft.id ? '编辑站点' : '新建站点') : drawer === 'media' ? '编辑图片资源' : drawer === 'review' ? '编辑评价' : drawer === 'sku' ? (skuDraft.id ? '编辑规格' : '新增规格') : drawer === 'payment' ? '支付配置' : '编辑浮层文案';
+  const drawerTitle = drawer === 'settings' ? '编辑站点配置' : drawer === 'site' ? (siteDraft.id ? '编辑站点' : '新建站点') : drawer === 'media' ? '编辑媒体资源' : drawer === 'review' ? '编辑评价' : drawer === 'sku' ? (skuDraft.id ? '编辑规格' : '新增规格') : drawer === 'payment' ? '支付配置' : '编辑浮层文案';
   const drawerContent = drawer === 'settings' ? settingsForm : drawer === 'site' ? siteForm : drawer === 'media' ? mediaForm : drawer === 'review' ? reviewForm : drawer === 'sku' ? skuForm : drawer === 'payment' ? paymentForm : purchaseForm;
   return (
     <>
@@ -987,6 +1146,7 @@ export function AdminApp() {
               <Title level={4}>管理中心</Title>
               {bootstrap && currentSiteId ? (
                 <Select
+                  aria-label="当前站点"
                   className="admin-site-switch"
                   value={currentSiteId}
                   onChange={(id) => updateSiteId(id)}

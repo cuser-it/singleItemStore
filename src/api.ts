@@ -1,6 +1,20 @@
 import type { AdminBootstrap, FloatingPurchase, MediaAsset, PublicBootstrap, Review, Site, SiteInput, SiteSettings, SiteSettingsUpdateInput, SiteUpdateInput } from '../shared/site';
 import type { CreateOrderInput, Order, OrderListResult, PaymentCreateResult, PaymentSettings, PaymentSettingsInput, ProductSku, ProductSkuInput } from '../shared/order';
 
+export type AdminMediaKind = 'image' | 'video';
+export type AdminHeroMediaMode = 'image' | 'video';
+
+export type AdminMediaAssetInput = {
+  siteId?: number | null;
+  section: 'hero' | 'detail';
+  kind?: AdminMediaKind;
+  sourceType: 'upload' | 'url';
+  source: string;
+  posterSource?: string | null;
+  alt: string;
+  sortOrder: number;
+  enabled: boolean;
+};
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     credentials: 'include',
@@ -107,24 +121,24 @@ export async function saveSiteSettings(siteId: number | null, input: SiteSetting
   });
 }
 
-export async function createMediaAsset(input: {
-  section: 'hero' | 'detail';
-  sourceType: 'upload' | 'url';
-  source: string;
-  alt: string;
-  sortOrder: number;
-  enabled: boolean;
-}) {
-  return requestJson<MediaAsset>('/api/admin/media-assets', {
-    method: 'POST',
-    body: JSON.stringify(input),
+export async function saveHeroMediaMode(siteId: number | null, mode: AdminHeroMediaMode) {
+  return requestJson<{ mode: AdminHeroMediaMode }>('/api/admin/hero-media-mode', {
+    method: 'PUT',
+    body: JSON.stringify({ siteId, mode }),
   });
 }
 
-export async function updateMediaAsset(id: number, input: Parameters<typeof createMediaAsset>[0]) {
+export async function createMediaAsset(input: AdminMediaAssetInput) {
+  return requestJson<MediaAsset>('/api/admin/media-assets', {
+    method: 'POST',
+    body: JSON.stringify({ kind: 'image', posterSource: null, ...input }),
+  });
+}
+
+export async function updateMediaAsset(id: number, input: AdminMediaAssetInput) {
   return requestJson<MediaAsset>(`/api/admin/media-assets/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(input),
+    body: JSON.stringify({ kind: 'image', posterSource: null, ...input }),
   });
 }
 
@@ -134,6 +148,7 @@ export async function deleteMediaAsset(id: number, siteId?: number | null) {
 }
 
 export async function createReview(input: {
+  displayDate?: string | null;
   siteId?: number | null;
   name: string;
   content: string;
@@ -184,10 +199,16 @@ export async function deleteFloatingPurchase(id: number, siteId?: number | null)
   return requestJson<void>(`/api/admin/floating-purchases/${id}${params}`, { method: 'DELETE' });
 }
 
-export async function uploadAsset(file: File) {
+export async function uploadAsset(file: File, options: { siteId?: number | null; section?: 'hero' | 'detail'; kind?: AdminMediaKind; purpose?: 'poster' } = {}) {
   const formData = new FormData();
   formData.append('file', file);
-  return requestJson<{ source: string; resolvedUrl: string }>('/api/admin/upload', {
+  const params = new URLSearchParams();
+  if (options.siteId != null) params.set('siteId', String(options.siteId));
+  if (options.section) params.set('section', options.section);
+  if (options.kind) params.set('kind', options.kind);
+  if (options.purpose) params.set('purpose', options.purpose);
+  const query = params.toString();
+  return requestJson<{ source: string; resolvedUrl: string }>(`/api/admin/upload${query ? `?${query}` : ''}`, {
     method: 'POST',
     body: formData,
   });
@@ -288,4 +309,16 @@ export async function exportOrders(params: URLSearchParams) {
 export async function fetchPaymentSuccessConfig(orderNo?: string | null) {
   const params = orderNo ? `?orderNo=${encodeURIComponent(orderNo)}` : '';
   return requestJson<{ message: string; customerServiceUrl: string; customerServiceQrCode?: string }>(`/api/public/payment-success-config${params}`);
+}
+
+export type PublicOrderStatus = {
+  orderNo: string;
+  paymentStatus: Order['paymentStatus'];
+  fulfillmentStatus: Order['fulfillmentStatus'];
+  totalAmount: string;
+};
+
+/** 支付回跳页轮询订单真实支付状态（不依赖网关的 return_url 是否真的跳回来） */
+export async function fetchPublicOrderStatus(orderNo: string) {
+  return requestJson<PublicOrderStatus>(`/api/public/orders/${encodeURIComponent(orderNo)}/status`);
 }

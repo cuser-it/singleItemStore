@@ -1,14 +1,15 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import LikeOutlined from '@ant-design/icons/LikeOutlined';
 import Skeleton from 'antd/es/skeleton';
-import Carousel from 'antd/es/carousel';
 import { ProgressiveImage } from './components/ProgressiveImage';
+import { HeroMedia } from './components/HeroMedia';
 import { CheckoutSheet, clampCheckoutQuantity, type CheckoutRecipient } from './components/CheckoutSheet';
 import { usePathname } from './hooks/usePathname';
 import type { PublicBootstrap, SiteSettings } from '../shared/site';
 import type { Order } from '../shared/order';
 const PaymentSuccess = lazy(() => import('./PaymentSuccess'));
 import { fetchPublicBootstrap, createOrder, queryPublicOrder } from './api';
+import { redirectToPayment } from './navigation';
 
 // 懒加载管理后台，避免前台页面加载 Ant Design
 const AdminApp = lazy(() => import('./AdminApp').then(m => ({ default: m.AdminAppShell })));
@@ -69,22 +70,25 @@ function PriceBanner({ sku }: { sku: { id: string; name: string; subtitle: strin
         <rect width="600" height="104" fill="#3510A8" />
         <path d="M390 2H600V102H420Z" fill="#ED008C" />
         <path d="M0 2H420L390 102H0Z" fill="#4300E8" />
-        <g fill="#FFFFFF" fontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
-          <text x="19" y="40" fontSize="18" fontWeight="700">
-            原价
+        <g fontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
+          <rect x="14" y="12" width="150" height="80" rx="7" fill="#FFFFFF" />
+          <text x="27" y="37" fill="#FF315F" fontSize="16" fontWeight="700">
+            {sku.saleLabel}
           </text>
-          <text x="19" y="79" fontSize="22" fontWeight="700">
-            ¥{sku.originalPrice.toFixed(1)}
+          <text x="27" y="76" fill="#FF315F" fontSize="30" fontWeight="800">
+            ¥{sku.price.toFixed(1)}
           </text>
         </g>
         <g fontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
-          <rect x="120" y="18" width="114" height="29" rx="15" fill="#FF3A68" />
-          <text x="177" y="38" fill="#FFFFFF" fontSize="16" fontWeight="700" textAnchor="middle">
+          <rect x="184" y="16" width="122" height="28" rx="14" fill="#FF3A68" />
+          <text x="245" y="35" fill="#FFFFFF" fontSize="15" fontWeight="700" textAnchor="middle">
             {sku.highlight ?? '50000+已售'}
           </text>
-          <rect x="120" y="53" width="130" height="34" rx="17" fill="#FFFFFF" />
-          <text x="185" y="76" fill="#FF315F" fontSize="16" fontWeight="700" textAnchor="middle">
-            {sku.saleLabel}¥{sku.price.toFixed(1)}
+          <text x="184" y="70" fill="#FFFFFF" fontSize="13" fontWeight="700">
+            原价
+          </text>
+          <text x="224" y="70" fill="#FFFFFF" fontSize="18" fontWeight="700" textDecoration="line-through">
+            ¥{sku.originalPrice.toFixed(1)}
           </text>
         </g>
         <g fill="#FFFFFF" textAnchor="middle" fontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif">
@@ -101,6 +105,20 @@ function PriceBanner({ sku }: { sku: { id: string; name: string; subtitle: strin
       </svg>
     </section>
   );
+}
+
+export function formatReviewDate(displayDate: string | null | undefined, createdAt: string) {
+  if (displayDate) return displayDate;
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function titleText(settings: SiteSettings) {
@@ -260,7 +278,7 @@ function DRu() {
       });
       setCheckoutOpen(false);
       showToast(`订单 ${result.order.orderNo} 已创建，正在打开支付`);
-      window.open(result.paymentUrl, '_blank', 'noopener,noreferrer');
+      redirectToPayment(result.paymentUrl, result.order.orderNo);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '订单提交失败');
     } finally {
@@ -283,13 +301,7 @@ function DRu() {
     <div className="store-page">
       <main>
         <section className="hero" aria-label="商品图片">
-          <Carousel autoplay autoplaySpeed={2500} dots={{ className: 'hero-dots' }}>
-            {heroImages.map((image, index) => (
-              <div className="slide" key={image.id}>
-                <ProgressiveImage src={image.resolvedUrl} alt={image.alt} draggable={false} decoding="async" loading={index === 0 ? 'eager' : 'lazy'} fetchPriority={index === 0 ? 'high' : 'auto'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </div>
-            ))}
-          </Carousel>
+          <HeroMedia mode={settings.heroMediaMode ?? 'image'} images={heroImages} video={bootstrap.heroVideo} />
         </section>
 
         <PriceBanner sku={selectedSku} />
@@ -470,7 +482,7 @@ function DRu() {
                       <div>
                         <div className="reviewer-name">{review.name}</div>
                         <div className="reviewer-sub" style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
-                          {new Date(review.createdAt || Date.now()).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                          {formatReviewDate(review.displayDate, review.createdAt)}
                         </div>
                       </div>
                     </div>

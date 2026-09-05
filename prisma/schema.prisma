@@ -44,6 +44,7 @@ model SiteSettings {
   reviewTags         Json
   productVariants    Json
   heroImageCount     Int
+  heroMediaMode      String   @default("image")
   paymentSuccessMessage String @default("添加客服领取服用说明")
   customerServiceUrl String @default("")
   customerServiceQrCode String?
@@ -57,6 +58,8 @@ model MediaAsset {
   site       Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
   section    String
   sourceType String
+  kind       String   @default("image")
+  posterSource String?
   source     String
   alt        String
   sortOrder  Int      @default(0)
@@ -77,6 +80,7 @@ model Review {
   featuredOnHome Boolean  @default(false)
   homeOrder      Int      @default(0)
   enabled        Boolean  @default(true)
+  displayDate    DateTime? @db.Date
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

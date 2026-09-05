@@ -818,6 +818,25 @@ export class OrderService {
     return { ...mapped, phone: maskPhone(mapped.phone), address: maskAddress(mapped.address) };
   }
 
+  /**
+   * 仅返回支付/履约状态，给支付回跳页轮询使用。
+   * 微信内 H5 支付完成后不一定会执行网关的 return_url，因此前端不能“落地即成功”，
+   * 必须回源查询真实状态；此接口不返回任何收货人隐私信息。
+   */
+  async getPublicOrderStatus(orderNo: string) {
+    await this.ensureReady();
+    const trimmed = orderNo.trim();
+    if (!trimmed) return null;
+    if (!this.persistent) {
+      const order = this.orders.find((item) => item.orderNo === trimmed && !item.deletedAt);
+      if (!order) return null;
+      return { orderNo: order.orderNo, paymentStatus: order.paymentStatus, fulfillmentStatus: order.fulfillmentStatus, totalAmount: order.totalAmount };
+    }
+    const order = await prismaClient.order.findFirst({ where: { orderNo: trimmed, deletedAt: null }, select: { orderNo: true, paymentStatus: true, fulfillmentStatus: true, totalAmount: true } });
+    if (!order) return null;
+    return { orderNo: order.orderNo, paymentStatus: order.paymentStatus, fulfillmentStatus: order.fulfillmentStatus, totalAmount: String(order.totalAmount) };
+  }
+
   async getPaymentSuccessConfig(orderNo?: string) {
     await this.ensureReady();
     let siteId: number | undefined;

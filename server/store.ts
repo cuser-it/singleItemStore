@@ -1,3 +1,4 @@
+import { ContentValidationError, validateDisplayDate, validateMediaWrite, validateMediaModeWrite } from '../shared/contentValidation';
 import {
   defaultBootstrap,
   defaultSiteSettings,
@@ -6,6 +7,7 @@ import {
   type FloatingPurchaseInput,
   type MediaAsset,
   type MediaAssetInput,
+  type MediaKind,
   type MediaSection,
   type PublicBootstrap,
   type Review,
@@ -31,6 +33,7 @@ export type ContentStore = {
   getAdminBootstrap: (siteId?: number) => Promise<AdminBootstrap>;
   getSiteSettings: (siteId?: number) => Promise<SiteSettings>;
   updateSiteSettings: (input: SiteSettingsUpdateInput, siteId?: number) => Promise<SiteSettings>;
+  updateHeroMediaMode: (mode: MediaKind, siteId?: number) => Promise<SiteSettings>;
   listMediaAssets: (section?: MediaSection, siteId?: number) => Promise<MediaAsset[]>;
   createMediaAsset: (input: MediaAssetInput, siteId?: number) => Promise<MediaAsset>;
   updateMediaAsset: (id: number, input: MediaAssetInput, siteId?: number) => Promise<MediaAsset | null>;
@@ -91,6 +94,8 @@ function buildMediaAsset(input: MediaAssetInput, id: number, siteId: number): Me
   return {
     id,
     siteId,
+    kind: input.kind ?? 'image',
+    posterSource: input.posterSource ?? null,
     section: input.section,
     sourceType: input.sourceType,
     source: input.source,
@@ -108,6 +113,7 @@ function buildReview(input: ReviewInput, id: number, siteId: number): Review {
   return {
     id,
     siteId,
+    displayDate: input.displayDate ?? null,
     name: input.name,
     content: input.content,
     images: input.images,
@@ -153,9 +159,9 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
   const base = buildSeedState();
   const state: SeedState = {
     sites: clone(seed.sites ?? base.sites),
-    settings: clone(seed.settings ?? base.settings),
-    mediaAssets: clone(seed.mediaAssets ?? base.mediaAssets),
-    reviews: clone(seed.reviews ?? base.reviews),
+    settings: clone(seed.settings ?? base.settings).map(item => ({ ...item, heroMediaMode: item.heroMediaMode ?? 'image' })),
+    mediaAssets: clone(seed.mediaAssets ?? base.mediaAssets).map(item => ({ ...item, kind: item.kind ?? 'image', posterSource: item.posterSource ?? null })),
+    reviews: clone(seed.reviews ?? base.reviews).map(item => ({ ...item, displayDate: item.displayDate ?? null })),
     floatingPurchases: clone(seed.floatingPurchases ?? base.floatingPurchases),
   };
 
@@ -239,7 +245,8 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       return {
         site: clone(site),
         settings: clone(settings),
-        heroImages: mediaAssets.filter((item) => item.section === 'hero').slice(0, 15),
+        heroImages: settings.heroMediaMode === 'video' ? [] : mediaAssets.filter((item) => item.section === 'hero' && item.kind === 'image').slice(0, 15),
+        heroVideo: settings.heroMediaMode === 'video' ? mediaAssets.find(item => item.section === 'hero' && item.kind === 'video') ?? null : null,
         detailImages: mediaAssets.filter((item) => item.section === 'detail'),
         reviews: topReviews(reviews).slice(0, 2),
         allReviews: [...reviews].filter((review) => review.enabled).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
@@ -253,7 +260,8 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       const allReviews = await this.listReviews(resolvedSiteId);
       return {
         ...bootstrap,
-        heroImages: mediaAssets.filter((item) => item.section === 'hero'),
+        heroImages: mediaAssets.filter((item) => item.section === 'hero' && item.kind === 'image'),
+        heroVideo: mediaAssets.find(item => item.section === 'hero' && item.kind === 'video') ?? null,
         detailImages: mediaAssets.filter((item) => item.section === 'detail'),
         allReviews,
         floatingPurchases: await this.listFloatingPurchases(resolvedSiteId),
@@ -275,11 +283,20 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       state.settings[index] = {
         ...state.settings[index],
         ...clone(input),
+        heroMediaMode: state.settings[index].heroMediaMode ?? 'image',
         // 可选字段需显式覆盖：clone 会丢掉 undefined 键，导致清空二维码后旧值残留
         customerServiceQrCode: input.customerServiceQrCode?.trim() || undefined,
         updatedAt: new Date().toISOString(),
       };
       return clone(state.settings[index]);
+    },
+    async updateHeroMediaMode(mode, siteId) {
+      if (mode !== 'image' && mode !== 'video') throw new ContentValidationError('invalid mode');
+      const site = siteOrActive(state, siteId);
+      const settings = state.settings.find(item => item.siteId === site.id)!;
+      settings.heroMediaMode = mode;
+      settings.updatedAt = new Date().toISOString();
+      return clone(settings);
     },
     async listMediaAssets(section, siteId) {
       const site = siteOrActive(state, siteId);
@@ -289,6 +306,7 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
     },
     async createMediaAsset(input, siteId) {
       const site = siteOrActive(state, siteId);
+      validateMediaWrite(input, state.settings.find(item => item.siteId === site.id)!, state.mediaAssets);
       const item = buildMediaAsset(input, makeId(state.mediaAssets), site.id);
       state.mediaAssets.push(item);
       return clone(item);
@@ -297,8 +315,13 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
       const site = siteOrActive(state, siteId);
       const index = state.mediaAssets.findIndex((item) => item.id === id && item.siteId === site.id);
       if (index < 0) return null;
+      const settings = state.settings.find(item => item.siteId === site.id)!;
+      validateMediaModeWrite(state.mediaAssets[index].section, state.mediaAssets[index].kind ?? 'image', settings);
+      validateMediaWrite(input, settings, state.mediaAssets, id);
       const updated = {
         ...state.mediaAssets[index],
+        kind: input.kind ?? 'image',
+        posterSource: input.posterSource ?? null,
         ...clone(input),
         resolvedUrl: resolveMediaUrl(input.source),
         updatedAt: new Date().toISOString(),
@@ -308,6 +331,8 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
     },
     async deleteMediaAsset(id, siteId) {
       const site = siteOrActive(state, siteId);
+      const existing = state.mediaAssets.find(item => item.id === id && item.siteId === site.id);
+      if (existing) validateMediaModeWrite(existing.section, existing.kind ?? 'image', state.settings.find(item => item.siteId === site.id)!);
       const before = state.mediaAssets.length;
       state.mediaAssets = state.mediaAssets.filter((item) => item.id !== id || item.siteId !== site.id);
       return state.mediaAssets.length !== before;
@@ -318,11 +343,13 @@ export function createMemoryStore(seed: Partial<SeedState> = {}): ContentStore {
     },
     async createReview(input, siteId) {
       const site = siteOrActive(state, siteId);
+      validateDisplayDate(input.displayDate);
       const item = buildReview(input, makeId(state.reviews), site.id);
       state.reviews.push(item);
       return clone(item);
     },
     async updateReview(id, input, siteId) {
+      validateDisplayDate(input.displayDate);
       const site = siteOrActive(state, siteId);
       const index = state.reviews.findIndex((item) => item.id === id && item.siteId === site.id);
       if (index < 0) return null;

@@ -1,4 +1,5 @@
-import express, { type Request, type Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import { ContentValidationError, validateDisplayDate, validateMediaModeWrite, validateMediaWrite } from '../shared/contentValidation';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import cors from 'cors';
@@ -32,8 +33,30 @@ export type CreateAppOptions = {
 };
 
 const jsonParser = express.json({ limit: '2mb' });
-const maxUploadSizeMb = Math.max(1, Number(process.env.MAX_UPLOAD_SIZE_MB ?? 20));
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxUploadSizeMb * 1024 * 1024 } });
+const maxUploadSizeMb = 20;
+function videoLimitMb() {
+  const value = Number(process.env.MAX_VIDEO_UPLOAD_SIZE_MB ?? process.env.MAX_UPLOAD_VIDEO_SIZE_MB ?? 50);
+  return Number.isFinite(value) && value > 0 ? value : 50;
+}
+
+function parseSiteId(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if ((typeof value !== 'string' && typeof value !== 'number') || !/^\d+$/.test(String(value)) || !Number.isSafeInteger(Number(value)) || Number(value) < 1) throw new ContentValidationError('invalid siteId');
+  return Number(value);
+}
+
+function validateUploadFile(file: Express.Multer.File, video: boolean) {
+  const b = file.buffer;
+  const ext = path.extname(file.originalname).toLowerCase();
+  const mime = file.mimetype.toLowerCase();
+  const valid = video
+    ? ext === '.mp4' && mime === 'video/mp4' && b.length >= 12 && b.toString('ascii', 4, 8) === 'ftyp'
+    : ((['.jpg', '.jpeg'].includes(ext) && mime === 'image/jpeg' && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff)
+      || (ext === '.png' && mime === 'image/png' && b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])))
+      || (ext === '.gif' && mime === 'image/gif' && ['GIF87a', 'GIF89a'].includes(b.toString('ascii', 0, 6)))
+      || (ext === '.webp' && mime === 'image/webp' && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP'));
+  if (!valid) throw new ContentValidationError(video ? 'file must be MP4 video' : 'invalid image file');
+}
 
 function toNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -77,8 +100,12 @@ function buildSiteUpdateInput(body: any): SiteUpdateInput {
 }
 
 function buildMediaInput(body: any): { input: MediaAssetInput; siteId?: number } {
+  if (body.kind !== undefined && body.kind !== 'image' && body.kind !== 'video') throw new ContentValidationError('invalid kind');
+  if (body.section !== undefined && body.section !== 'hero' && body.section !== 'detail') throw new ContentValidationError('invalid section');
   return {
     input: {
+      kind: body.kind ?? 'image',
+      posterSource: body.posterSource ?? null,
       section: pickSection(body.section),
       sourceType: body.sourceType === 'url' ? 'url' : 'upload',
       source: String(body.source ?? '').trim(),
@@ -86,13 +113,15 @@ function buildMediaInput(body: any): { input: MediaAssetInput; siteId?: number }
       sortOrder: toNumber(body.sortOrder, 0),
       enabled: toBoolean(body.enabled, true),
     },
-    siteId: body.siteId ? Number(body.siteId) : undefined,
+    siteId: parseSiteId(body.siteId),
   };
 }
 
 function buildReviewInput(body: any): { input: ReviewInput; siteId?: number } {
+  validateDisplayDate(body.displayDate);
   return {
     input: {
+      ...(body.displayDate !== undefined ? { displayDate: body.displayDate } : {}),
       name: String(body.name ?? '').trim(),
       content: String(body.content ?? '').trim(),
       images: toStringArray(body.images),
@@ -100,7 +129,7 @@ function buildReviewInput(body: any): { input: ReviewInput; siteId?: number } {
       homeOrder: toNumber(body.homeOrder, 0),
       enabled: toBoolean(body.enabled, true),
     },
-    siteId: body.siteId ? Number(body.siteId) : undefined,
+    siteId: parseSiteId(body.siteId),
   };
 }
 
@@ -111,7 +140,7 @@ function buildFloatingPurchaseInput(body: any): { input: FloatingPurchaseInput; 
       enabled: toBoolean(body.enabled, true),
       sortOrder: toNumber(body.sortOrder, 0),
     },
-    siteId: body.siteId ? Number(body.siteId) : undefined,
+    siteId: parseSiteId(body.siteId),
   };
 }
 
@@ -137,7 +166,7 @@ function buildSettingsInput(body: any): { input: SiteSettingsUpdateInput; siteId
       customerServiceUrl: String(body.customerServiceUrl ?? '').trim(),
       customerServiceQrCode: String(body.customerServiceQrCode ?? '').trim() || undefined,
     },
-    siteId: body.siteId ? Number(body.siteId) : undefined,
+    siteId: parseSiteId(body.siteId),
   };
 }
 
@@ -155,8 +184,8 @@ function createSafeUploadStorage(uploadDir: string, uploadStorage?: UploadStorag
 }
 
 async function listHeroOrDetail(store: ContentStore, section: MediaSection) {
-  const assets = await store.listMediaAssets(section);
-  return sortByOrder(assets.filter((item) => item.enabled)).map((item) => ({ ...item, resolvedUrl: resolveMediaUrl(item.source) }));
+  const bootstrap = await store.getBootstrap();
+  return section === 'hero' ? bootstrap.heroImages : bootstrap.detailImages;
 }
 
 function buildSkuInput(body: any) {
@@ -190,7 +219,7 @@ function resolveRequestOrigin(req: { headers: Record<string, string | string[] |
 
 function buildOrderInput(body: any) {
   return {
-    siteId: body.siteId ? Number(body.siteId) : undefined,
+    siteId: parseSiteId(body.siteId),
     skuId: Number(body.skuId),
     quantity: Number(body.quantity),
     recipientName: String(body.recipientName ?? '').trim(),
@@ -355,6 +384,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
+  // 支付回跳页轮询用：只拿支付状态，不需要手机号，也不返回隐私信息
+  app.get('/api/public/orders/:orderNo/status', async (req, res) => {
+    const status = await orderService.getPublicOrderStatus(String(req.params.orderNo));
+    if (!status) {
+      res.status(404).json({ message: 'not found' });
+      return;
+    }
+    res.json(status);
+  });
+
   app.get('/api/public/orders/:orderNo', async (req, res) => {
     try {
       const order = await orderService.queryPublicOrder(String(req.params.orderNo), String(req.query.phone ?? ''));
@@ -430,7 +469,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.get('/api/admin/skus', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    const siteId = parseSiteId(req.query.siteId);
     res.json(await orderService.listSkus(siteId));
   });
 
@@ -568,7 +607,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   app.get('/api/admin/bootstrap', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    const siteId = parseSiteId(req.query.siteId);
     res.json(await store.getAdminBootstrap(siteId));
   });
 
@@ -627,6 +666,14 @@ export async function createApp(options: CreateAppOptions = {}) {
     res.json(settings);
   });
 
+  app.put('/api/admin/hero-media-mode', async (req, res) => {
+    if (!ensureAuthed(req, res, sessions)) return;
+    const siteId = parseSiteId(req.body.siteId);
+    if (siteId === undefined) throw new ContentValidationError('siteId required');
+    if (req.body.mode !== 'image' && req.body.mode !== 'video') throw new ContentValidationError('invalid mode');
+    res.json(await store.updateHeroMediaMode(req.body.mode, siteId));
+  });
+
   app.put('/api/admin/site-settings', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     const { input, siteId } = buildSettingsInput(req.body);
@@ -638,18 +685,25 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/api/admin/media-assets', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     const section = req.query.section === 'detail' ? 'detail' : req.query.section === 'hero' ? 'hero' : undefined;
-    res.json(await store.listMediaAssets(section));
+    res.json(await store.listMediaAssets(section, parseSiteId(req.query.siteId)));
   });
 
   app.post('/api/admin/media-assets', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     const { input, siteId } = buildMediaInput(req.body);
+    validateMediaWrite(input, await store.getSiteSettings(siteId), await store.listMediaAssets(undefined, siteId));
     res.status(201).json(await store.createMediaAsset(input, siteId));
   });
 
   app.put('/api/admin/media-assets/:id', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
     const { input, siteId } = buildMediaInput(req.body);
+    const assets = await store.listMediaAssets(undefined, siteId);
+    const existing = assets.find(asset => asset.id === Number(req.params.id));
+    if (!existing) { res.status(404).json({ message: 'not found' }); return; }
+    const settings = await store.getSiteSettings(siteId);
+    validateMediaModeWrite(existing.section, existing.kind ?? 'image', settings);
+    validateMediaWrite(input, settings, assets, existing.id);
     const item = await store.updateMediaAsset(Number(req.params.id), input, siteId);
     if (!item) {
       res.status(404).json({ message: 'not found' });
@@ -660,13 +714,15 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.delete('/api/admin/media-assets/:id', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    const siteId = parseSiteId(req.query.siteId);
+    const existing = (await store.listMediaAssets(undefined, siteId)).find(asset => asset.id === Number(req.params.id));
+    if (existing) validateMediaModeWrite(existing.section, existing.kind ?? 'image', await store.getSiteSettings(siteId));
     res.status(await store.deleteMediaAsset(Number(req.params.id), siteId) ? 204 : 404).end();
   });
 
   app.get('/api/admin/reviews', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    res.json(await store.listReviews());
+    res.json(await store.listReviews(parseSiteId(req.query.siteId)));
   });
 
   app.post('/api/admin/reviews', async (req, res) => {
@@ -688,7 +744,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.delete('/api/admin/reviews/:id', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    const siteId = parseSiteId(req.query.siteId);
     res.status(await store.deleteReview(Number(req.params.id), siteId) ? 204 : 404).end();
   });
 
@@ -716,15 +772,27 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.delete('/api/admin/floating-purchases/:id', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
-    const siteId = req.query.siteId ? Number(req.query.siteId) : undefined;
+    const siteId = parseSiteId(req.query.siteId);
     res.status(await store.deleteFloatingPurchase(Number(req.params.id), siteId) ? 204 : 404).end();
   });
 
-  app.post('/api/admin/upload', (req, res) => {
+  app.post('/api/admin/upload', async (req, res) => {
     if (!ensureAuthed(req, res, sessions)) return;
+    const siteId = parseSiteId(req.query.siteId);
+    const section = req.query.section === undefined ? undefined : req.query.section;
+    const kind = req.query.kind ?? 'image';
+    const poster = req.query.purpose === 'poster';
+    if ((section !== undefined && section !== 'hero' && section !== 'detail') || (kind !== 'image' && kind !== 'video') || (req.query.purpose !== undefined && !poster)) throw new ContentValidationError('invalid upload query');
+    if (poster && (kind !== 'video' || section !== 'hero')) throw new ContentValidationError('poster requires hero video');
+    if (kind === 'video' && section !== 'hero') throw new ContentValidationError('video requires hero section');
+    if (section) validateMediaModeWrite(section, kind, await store.getSiteSettings(siteId));
+    else if (siteId !== undefined) await store.getSiteSettings(siteId);
+    const video = kind === 'video' && !poster;
+    const limitMb = video ? videoLimitMb() : maxUploadSizeMb;
+    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: limitMb * 1024 * 1024 } });
     upload.single('file')(req, res, async (error) => {
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-        res.status(413).json({ message: `图片过大，请上传不超过 ${maxUploadSizeMb}MB 的文件` });
+        res.status(413).json({ message: `${video ? '视频' : '图片'}过大，请上传不超过 ${limitMb}MB 的文件` });
         return;
       }
       if (error) {
@@ -736,8 +804,10 @@ export async function createApp(options: CreateAppOptions = {}) {
         return;
       }
       try {
+        validateUploadFile(req.file, video);
         res.status(201).json(await uploadStorage.save(req.file));
-      } catch {
+      } catch (error) {
+        if (error instanceof ContentValidationError) { res.status(error.status).json({ message: error.message }); return; }
         res.status(502).json({ message: '图片存储失败，请检查存储桶配置或稍后重试' });
       }
     });
@@ -750,6 +820,11 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // 必须在所有 API 路由之后，否则 SPA 回退会抢先处理 /api 请求
   mountStaticFrontend(app, staticDir);
+
+  app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    const message = error instanceof Error ? error.message : 'internal server error';
+    res.status(error instanceof ContentValidationError ? error.status : message === 'site not found' || message === 'site settings not found' ? 404 : 500).json({ message });
+  });
 
   return app;
 }

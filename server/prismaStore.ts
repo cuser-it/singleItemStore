@@ -18,6 +18,7 @@ import {
   resolveMediaUrl,
 } from '../shared/site';
 import type { ContentStore } from './store';
+import { ContentValidationError, validateDisplayDate, validateMediaWrite, validateMediaModeWrite } from '../shared/contentValidation';
 
 const client = new PrismaClient();
 const DEFAULT_SITE_ID = 1;
@@ -32,6 +33,10 @@ function toJsonValue<T>(value: T): Prisma.InputJsonValue {
 
 function normalizeSlug(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || `site-${Date.now()}`;
+}
+function normalizeDisplayDate(value: string | null | undefined) {
+  validateDisplayDate(value);
+  return value === undefined ? undefined : value === null ? null : new Date(`${value}T00:00:00.000Z`);
 }
 
 function mapSite(record: { id: number; name: string; slug: string; isActive: boolean; createdAt: Date; updatedAt: Date }): Site {
@@ -65,6 +70,7 @@ function mapSettings(record: {
   reviewTags: Prisma.JsonValue;
   productVariants: Prisma.JsonValue;
   heroImageCount: number;
+  heroMediaMode?: string | null;
   paymentSuccessMessage?: string | null;
   customerServiceUrl?: string | null;
   customerServiceQrCode?: string | null;
@@ -91,6 +97,7 @@ function mapSettings(record: {
     reviewTags: toStringArray(record.reviewTags),
     productVariants: Array.isArray(record.productVariants) ? (record.productVariants as SiteSettings['productVariants']) : [],
     heroImageCount: record.heroImageCount,
+    heroMediaMode: record.heroMediaMode === 'video' ? 'video' : 'image',
     paymentSuccessMessage: record.paymentSuccessMessage || defaultBootstrap.settings.paymentSuccessMessage,
     customerServiceUrl: record.customerServiceUrl ?? '',
     customerServiceQrCode: record.customerServiceQrCode || undefined,
@@ -104,6 +111,8 @@ function mapMediaAsset(record: {
   siteId: number;
   section: string;
   sourceType: string;
+  kind?: string | null;
+  posterSource?: string | null;
   source: string;
   alt: string;
   sortOrder: number;
@@ -116,6 +125,8 @@ function mapMediaAsset(record: {
     siteId: record.siteId,
     section: record.section as MediaSection,
     sourceType: record.sourceType as MediaAsset['sourceType'],
+    kind: (record.kind || 'image') as MediaAsset['kind'],
+    posterSource: record.posterSource ?? null,
     source: record.source,
     alt: record.alt,
     sortOrder: record.sortOrder,
@@ -127,6 +138,7 @@ function mapMediaAsset(record: {
 }
 
 function mapReview(record: {
+  displayDate?: Date | null;
   id: number;
   siteId: number;
   name: string;
@@ -144,6 +156,7 @@ function mapReview(record: {
     name: record.name,
     content: record.content,
     images: toStringArray(record.images),
+    displayDate: record.displayDate?.toISOString().slice(0, 10) ?? null,
     featuredOnHome: record.featuredOnHome,
     homeOrder: record.homeOrder,
     enabled: record.enabled,
@@ -204,6 +217,7 @@ async function ensureSchema() {
       "reviewTags" JSONB NOT NULL,
       "productVariants" JSONB NOT NULL,
       "heroImageCount" INTEGER NOT NULL,
+      "heroMediaMode" TEXT NOT NULL DEFAULT 'image',
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -214,6 +228,8 @@ async function ensureSchema() {
       "siteId" INTEGER NOT NULL DEFAULT 1,
       "section" TEXT NOT NULL,
       "sourceType" TEXT NOT NULL,
+      "kind" TEXT NOT NULL DEFAULT 'image',
+      "posterSource" TEXT,
       "source" TEXT NOT NULL,
       "alt" TEXT NOT NULL,
       "sortOrder" INTEGER NOT NULL DEFAULT 0,
@@ -248,7 +264,11 @@ async function ensureSchema() {
     );
   `);
 
-  await client.$executeRawUnsafe('ALTER TABLE "SiteSettings" ADD COLUMN IF NOT EXISTS "siteId" INTEGER');
+  await client.$executeRawUnsafe('ALTER TABLE "SiteSettings" ADD COLUMN IF NOT EXISTS "heroMediaMode" TEXT NOT NULL DEFAULT \'image\'');
+  await client.$executeRawUnsafe('ALTER TABLE "MediaAsset" ADD COLUMN IF NOT EXISTS "kind" TEXT NOT NULL DEFAULT \'image\'');
+  await client.$executeRawUnsafe('ALTER TABLE "MediaAsset" ADD COLUMN IF NOT EXISTS "posterSource" TEXT');
+  await client.$executeRawUnsafe('ALTER TABLE "Review" ADD COLUMN IF NOT EXISTS "displayDate" DATE');
+
   await client.$executeRawUnsafe('ALTER TABLE "MediaAsset" ADD COLUMN IF NOT EXISTS "siteId" INTEGER DEFAULT 1');
   await client.$executeRawUnsafe('ALTER TABLE "Review" ADD COLUMN IF NOT EXISTS "siteId" INTEGER DEFAULT 1');
   await client.$executeRawUnsafe('ALTER TABLE "FloatingPurchase" ADD COLUMN IF NOT EXISTS "siteId" INTEGER DEFAULT 1');
@@ -299,6 +319,7 @@ async function ensureSeed() {
         reviewTags: toJsonValue(defaultBootstrap.settings.reviewTags),
         productVariants: toJsonValue(defaultBootstrap.settings.productVariants),
         heroImageCount: defaultBootstrap.settings.heroImageCount,
+        heroMediaMode: defaultBootstrap.settings.heroMediaMode ?? 'image',
       },
     });
   }
@@ -309,6 +330,8 @@ async function ensureSeed() {
         siteId: defaultSite.id,
         section: asset.section,
         sourceType: asset.sourceType,
+        kind: asset.kind ?? 'image',
+        posterSource: asset.posterSource ?? null,
         source: asset.source,
         alt: asset.alt,
         sortOrder: asset.sortOrder,
@@ -324,6 +347,7 @@ async function ensureSeed() {
         name: review.name,
         content: review.content,
         images: toJsonValue(review.images),
+        displayDate: normalizeDisplayDate(review.displayDate) ?? null,
         featuredOnHome: review.featuredOnHome,
         homeOrder: review.homeOrder,
         enabled: review.enabled,
@@ -394,6 +418,7 @@ async function duplicateSiteContent(templateSiteId: number, newSiteId: number) {
         reviewTags: toJsonValue(settings.reviewTags as unknown),
         productVariants: toJsonValue(settings.productVariants as unknown),
         heroImageCount: settings.heroImageCount,
+        heroMediaMode: settings.heroMediaMode ?? 'image',
         paymentSuccessMessage: '添加客服领取服用说明',
         customerServiceUrl: '',
       },
@@ -423,6 +448,7 @@ async function duplicateSiteContent(templateSiteId: number, newSiteId: number) {
       reviewTags: toJsonValue(templateSettings.reviewTags as unknown),
       productVariants: toJsonValue(templateSettings.productVariants as unknown),
       heroImageCount: templateSettings.heroImageCount,
+      heroMediaMode: templateSettings.heroMediaMode,
       paymentSuccessMessage: templateSettings.paymentSuccessMessage,
       customerServiceUrl: templateSettings.customerServiceUrl,
       customerServiceQrCode: templateSettings.customerServiceQrCode,
@@ -437,12 +463,12 @@ async function duplicateSiteContent(templateSiteId: number, newSiteId: number) {
 
   if (mediaAssets.length) {
     await client.mediaAsset.createMany({
-      data: mediaAssets.map((asset) => ({ siteId: newSiteId, section: asset.section, sourceType: asset.sourceType, source: asset.source, alt: asset.alt, sortOrder: asset.sortOrder, enabled: asset.enabled })),
+      data: mediaAssets.map((asset) => ({ siteId: newSiteId, section: asset.section, sourceType: asset.sourceType, kind: asset.kind, posterSource: asset.posterSource, source: asset.source, alt: asset.alt, sortOrder: asset.sortOrder, enabled: asset.enabled })),
     });
   }
   if (reviews.length) {
     await client.review.createMany({
-      data: reviews.map((review) => ({ siteId: newSiteId, name: review.name, content: review.content, images: toJsonValue(review.images), featuredOnHome: review.featuredOnHome, homeOrder: review.homeOrder, enabled: review.enabled })),
+      data: reviews.map((review) => ({ siteId: newSiteId, name: review.name, displayDate: review.displayDate, content: review.content, images: toJsonValue(review.images), featuredOnHome: review.featuredOnHome, homeOrder: review.homeOrder, enabled: review.enabled })),
     });
   }
   if (floatingPurchases.length) {
@@ -455,6 +481,10 @@ async function duplicateSiteContent(templateSiteId: number, newSiteId: number) {
 }
 
 export async function createPrismaStore(): Promise<ContentStore> {
+  // Check before the first query; never initialize content in another database.
+  if (new URL(process.env.DATABASE_URL ?? '').pathname !== '/fsd') {
+    throw new Error('DATABASE_URL must point to fsd');
+  }
   await ensureSeed();
 
   // 使用具名变量而不是在对象字面量里用 this：
@@ -545,8 +575,9 @@ export async function createPrismaStore(): Promise<ContentStore> {
       return {
         site: mapSite(site),
         settings: mapSettings(settings),
-        heroImages: mappedMedia.filter((item) => item.section === 'hero').slice(0, 15),
-        detailImages: mappedMedia.filter((item) => item.section === 'detail'),
+        heroImages: settings.heroMediaMode === 'video' ? [] : mappedMedia.filter((item) => item.section === 'hero' && item.kind === 'image').slice(0, 15),
+        heroVideo: settings.heroMediaMode === 'video' ? mappedMedia.find((item) => item.section === 'hero' && item.kind === 'video') ?? null : null,
+        detailImages: mappedMedia.filter((item) => item.section === 'detail' && item.kind === 'image'),
         reviews: topReviews(mappedReviews).slice(0, 2),
         allReviews: mappedReviews.filter((review) => review.enabled),
         floatingPurchases: floatingPurchases.filter((item) => item.enabled).map(mapFloatingPurchase),
@@ -563,6 +594,7 @@ export async function createPrismaStore(): Promise<ContentStore> {
       return {
         ...bootstrap,
         heroImages: mediaAssets.filter((item) => item.section === 'hero'),
+        heroVideo: mediaAssets.find((item) => item.section === 'hero' && item.kind === 'video') ?? null,
         detailImages: mediaAssets.filter((item) => item.section === 'detail'),
         allReviews,
         floatingPurchases,
@@ -603,6 +635,14 @@ export async function createPrismaStore(): Promise<ContentStore> {
       });
       return mapSettings(record);
     },
+    async updateHeroMediaMode(mode, siteId) {
+      const resolved = await resolveSiteId(siteId);
+      return client.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "SiteSettings" WHERE "siteId" = ${resolved} FOR UPDATE`;
+        const row = await tx.siteSettings.update({ where: { siteId: resolved }, data: { heroMediaMode: mode } });
+        return mapSettings(row);
+      });
+    },
     async listMediaAssets(section?: MediaSection, siteId?: number) {
       const records = await client.mediaAsset.findMany({
         where: { siteId: await resolveSiteId(siteId), ...(section ? { section } : {}) },
@@ -629,10 +669,12 @@ export async function createPrismaStore(): Promise<ContentStore> {
       return records.map(mapReview);
     },
     async createReview(input: ReviewInput, siteId?: number) {
+      const displayDate = normalizeDisplayDate(input.displayDate);
       const record = await client.review.create({
         data: {
           siteId: await resolveSiteId(siteId),
           name: input.name,
+          displayDate,
           content: input.content,
           images: toJsonValue(input.images),
           featuredOnHome: input.featuredOnHome,
@@ -643,9 +685,10 @@ export async function createPrismaStore(): Promise<ContentStore> {
       return mapReview(record);
     },
     async updateReview(id: number, input: ReviewInput, siteId?: number) {
+      const displayDate = normalizeDisplayDate(input.displayDate);
       const result = await client.review.updateMany({
         where: { id, siteId: await resolveSiteId(siteId) },
-        data: { name: input.name, content: input.content, images: toJsonValue(input.images), featuredOnHome: input.featuredOnHome, homeOrder: input.homeOrder, enabled: input.enabled },
+        data: { name: input.name, ...(displayDate !== undefined ? { displayDate } : {}), content: input.content, images: toJsonValue(input.images), featuredOnHome: input.featuredOnHome, homeOrder: input.homeOrder, enabled: input.enabled },
       });
       if (!result.count) return null;
       const record = await client.review.findUnique({ where: { id } });

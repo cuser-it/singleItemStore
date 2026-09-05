@@ -1,5 +1,7 @@
 import type { ProductSku } from './order';
 
+export type MediaKind = 'image' | 'video';
+export type HeroMediaMode = MediaKind;
 export type MediaSection = 'hero' | 'detail';
 export type MediaSourceType = 'upload' | 'url';
 
@@ -28,6 +30,7 @@ export type Site = {
 };
 
 export type SiteSettings = {
+  heroMediaMode?: HeroMediaMode;
   id: number;
   siteId: number;
   shopName: string;
@@ -54,6 +57,8 @@ export type SiteSettings = {
   updatedAt: string;
 };
 export type MediaAsset = {
+  kind?: MediaKind;
+  posterSource?: string | null;
   id: number;
   siteId: number;
   section: MediaSection;
@@ -68,6 +73,7 @@ export type MediaAsset = {
 };
 
 export type Review = {
+  displayDate?: string | null;
   id: number;
   siteId: number;
   name: string;
@@ -91,6 +97,7 @@ export type FloatingPurchase = {
 };
 
 export type PublicBootstrap = {
+  heroVideo?: MediaAsset | null;
   site: Site;
   settings: SiteSettings;
   heroImages: MediaAsset[];
@@ -123,9 +130,11 @@ export type SiteUpdateInput = {
  * 不包含 salePrice / originalPrice / productVariants：价格与规格的主存储是 `ProductSku` 表，
  * 由 SKU 管理接口维护，不再通过站点设置接口写入（与两个 store 的实际行为保持一致）。
  */
-export type SiteSettingsUpdateInput = Omit<SiteSettings, 'id' | 'siteId' | 'createdAt' | 'updatedAt' | 'salePrice' | 'originalPrice' | 'productVariants'>;
+export type SiteSettingsUpdateInput = Omit<SiteSettings, 'id' | 'siteId' | 'createdAt' | 'updatedAt' | 'salePrice' | 'originalPrice' | 'productVariants' | 'heroMediaMode'>;
 
 export type MediaAssetInput = {
+  kind?: MediaKind;
+  posterSource?: string | null;
   section: MediaSection;
   sourceType: MediaSourceType;
   source: string;
@@ -135,6 +144,7 @@ export type MediaAssetInput = {
 };
 
 export type ReviewInput = {
+  displayDate?: string | null;
   name: string;
   content: string;
   images: string[];
@@ -267,6 +277,7 @@ export const defaultSiteSettings: SiteSettings = {
   reviewTags: ['效果明显', '价格便宜', '发货快', '物流快', '服务好'],
   productVariants: [],
   heroImageCount: 5,
+  heroMediaMode: 'image',
   paymentSuccessMessage: '添加客服领取服用说明',
   customerServiceUrl: '',
   customerServiceQrCode: undefined,
@@ -277,6 +288,7 @@ export const defaultSiteSettings: SiteSettings = {
 export const defaultBootstrap: PublicBootstrap = {
   site: defaultSite,
   settings: defaultSiteSettings,
+  heroVideo: null,
   heroImages,
   detailImages,
   reviews,

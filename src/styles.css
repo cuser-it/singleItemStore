@@ -1949,9 +1949,77 @@ img {
   .co-footer__total strong { font-size: 20px; }
 }
 
-/* ================================================================
-   支付成功页（移动端优先）
-   ================================================================ */
+
+/* 首页媒体：图片与视频保持统一的 1:1 画幅 */
+.hero-video,
+.hero-media__empty {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: #f1f2f4;
+}
+
+.hero-media__empty {
+  display: grid;
+  place-items: center;
+}
+
+.hero-video__element,
+.hero-video__poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-video__element {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-video__cover {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background: #f1f2f4;
+  transition: opacity .18s ease;
+}
+
+.hero-video__cover--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hero-video__controls {
+  position: absolute;
+  z-index: 3;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hero-video__controls button {
+  display: grid;
+  min-width: 34px;
+  min-height: 34px;
+  place-items: center;
+  padding: 6px 9px;
+  border-radius: 17px;
+  background: rgba(0, 0, 0, .58);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.hero-video__controls button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
 .ps-page {
   min-height: 100vh;
   min-height: 100dvh;
@@ -1971,6 +2039,8 @@ img {
 .ps-loading { display: grid; gap: 14px; justify-items: center; padding: 8px 0; }
 .ps-hero { display: grid; justify-items: center; gap: 6px; text-align: center; }
 .ps-hero__icon { font-size: 64px; color: #07c160; margin-top: -56px; background: #fff; border-radius: 50%; padding: 6px; box-shadow: 0 6px 16px rgba(7, 193, 96, .25); }
+.ps-hero__icon--pending { color: #fa8c16; box-shadow: 0 6px 16px rgba(250, 140, 22, .25); }
+.ps-hero__icon--failed { color: #f5222d; box-shadow: 0 6px 16px rgba(245, 34, 45, .25); }
 .ps-hero__title { margin: 6px 0 0; color: #17191d; font-size: 22px; font-weight: 800; }
 .ps-hero__sub { margin: 0; color: #7a7f87; font-size: 13px; }
 .ps-order { margin-top: 20px; padding: 12px 14px; border-radius: 10px; background: #f7f8fa; }
