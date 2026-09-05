@@ -1164,7 +1164,7 @@ export function AdminApp() {
           </Header>
           <Content className="antd-admin-content">{loading && !bootstrap ? <Spin size="large" /> : content}</Content>
         </Layout>
-        <Drawer title={drawerTitle} open={Boolean(drawer)} onClose={closeDrawer} width={drawer === 'settings' || drawer === 'payment' ? 720 : 560} destroyOnClose>
+        <Drawer title={drawerTitle} open={Boolean(drawer)} onClose={closeDrawer} size={drawer === 'settings' || drawer === 'payment' ? 'large' : 'default'} destroyOnClose>
           {drawerContent}
         </Drawer>
       </Layout>
