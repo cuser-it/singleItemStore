@@ -593,9 +593,9 @@ export async function createPrismaStore(): Promise<ContentStore> {
       ]);
       return {
         ...bootstrap,
-        heroImages: mediaAssets.filter((item) => item.section === 'hero'),
+        heroImages: mediaAssets.filter((item) => item.section === 'hero' && item.kind === 'image'),
         heroVideo: mediaAssets.find((item) => item.section === 'hero' && item.kind === 'video') ?? null,
-        detailImages: mediaAssets.filter((item) => item.section === 'detail'),
+        detailImages: mediaAssets.filter((item) => item.section === 'detail' && item.kind === 'image'),
         allReviews,
         floatingPurchases,
         authenticated: true,

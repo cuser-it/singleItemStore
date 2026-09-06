@@ -13,6 +13,8 @@ import {
   Input,
   Layout,
   Menu,
+  Modal,
+  Progress,
   Row,
   Select,
   Segmented,
@@ -214,7 +216,11 @@ export function AdminApp() {
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft>({ content: '', enabled: true, sortOrder: 0 });
   const [reviewStatusFilter, setReviewStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
   const [mediaStatusFilter, setMediaStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
-  const [mediaTab, setMediaTab] = useState<MediaSection>('hero');
+  const [mediaTab, setMediaTab] = useState<'carousel' | 'video' | 'detail'>('carousel');
+  const [mediaDraftDirty, setMediaDraftDirty] = useState(false);
+  const [mediaPreview, setMediaPreview] = useState<MediaAsset | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStage, setUploadStage] = useState('');
   const [reviewQuery, setReviewQuery] = useState('');
   const [mediaBusy, setMediaBusy] = useState(false);
   const [modeBusy, setModeBusy] = useState(false);
@@ -314,13 +320,14 @@ export function AdminApp() {
   }, [currentSiteId]);
 
   const updateSiteId = (siteId: number) => {
+    if (operationLock.current) { message.warning('上传或保存进行中，请等待完成'); return; }
     siteEpoch.current++;
     siteIdRef.current = siteId;
     operationLock.current = false;
     setMediaBusy(false);
     setModeBusy(false);
     setSelectedMediaIds([]);
-    closeDrawer();
+    closeDrawer(true);
     setCurrentSiteId(siteId);
     const params = new URLSearchParams(window.location.search);
     params.set('siteId', String(siteId));
@@ -328,7 +335,12 @@ export function AdminApp() {
     window.history.pushState({}, '', newUrl);
   };
 
-  const closeDrawer = () => {
+  const closeDrawer = (force = false) => {
+    if (!force && operationLock.current) { message.warning('上传或保存进行中，请等待完成'); return; }
+    if (!force && drawer === 'media' && mediaDraftDirty) {
+      modal.confirm({ title: '放弃未保存的媒体吗？', content: '关闭后将丢失当前媒体编辑内容。', okText: '放弃并关闭', cancelText: '继续编辑', onOk: () => closeDrawer(true) });
+      return;
+    }
     drawerEpoch.current++;
     setDrawer(null);
   };
@@ -338,14 +350,15 @@ export function AdminApp() {
     setDrawer('site');
   };
   const canEditMedia = (section: MediaSection, kind: 'image' | 'video') =>
-    !loading && !operationLock.current && (section === 'detail' || heroModeRef.current === kind);
-  const openMedia = (item?: MediaAsset, section: MediaSection = mediaTab, kind: 'image' | 'video' = 'image') => {
+    !loading && !operationLock.current && (section === 'detail' ? kind === 'image' : heroModeRef.current === kind);
+  const openMedia = (item?: MediaAsset, section: MediaSection = mediaTab === 'detail' ? 'detail' : 'hero', kind: 'image' | 'video' = mediaTab === 'video' ? 'video' : 'image') => {
     section = item?.section ?? section;
     kind = item?.kind ?? kind;
     if (!canEditMedia(section, kind)) return;
     drawerEpoch.current++;
     const defaultOrder = section === 'hero' ? (bootstrap?.heroImages.length ?? 0) + 1 : (bootstrap?.detailImages.length ?? 0) + 1;
     setMediaDraft(item ? { id: item.id, kind, posterSource: item.posterSource ?? '', section, sourceType: item.sourceType, source: item.source, alt: item.alt, sortOrder: item.sortOrder, enabled: item.enabled } : { section, kind, posterSource: '', sourceType: 'url', source: '', alt: '', sortOrder: kind === 'video' ? 1 : defaultOrder, enabled: true });
+    setMediaDraftDirty(false);
     setDrawer('media');
   };
   const openReview = (item?: Review) => {
@@ -456,8 +469,12 @@ export function AdminApp() {
     const valid = () => mounted.current && epoch === siteEpoch.current && draftEpoch === drawerEpoch.current;
     operationLock.current = true;
     setMediaBusy(true);
-    const options = { siteId, section: mediaDraft.section, kind: mediaDraft.kind };
+    setUploadProgress(0);
+    setUploadStage(mediaDraft.kind === 'video' && !poster ? '上传视频中' : '上传文件中');
+    const progress = (percent: number) => { if (valid()) setUploadProgress(Math.max(0, Math.min(100, percent))); };
+    const options = { siteId, section: mediaDraft.section, kind: mediaDraft.kind, onProgress: (percent: number) => progress(mediaDraft.kind === 'video' && !poster ? Math.round(percent * 0.7) : percent) };
     let objectUrl: string | undefined;
+    let coverFailed = false;
     try {
       const result = await uploadAsset(file, isMedia ? { ...options, ...(poster ? { purpose: 'poster' as const } : {}) } : { siteId });
       if (!valid()) return;
@@ -467,25 +484,37 @@ export function AdminApp() {
         settingsFormInstance.setFieldValue('customerServiceQrCode', result.resolvedUrl);
         setSettings((prev) => prev ? { ...prev, customerServiceQrCode: result.resolvedUrl } : null);
       } else if (poster) {
+        setMediaDraftDirty(true);
         setMediaDraft((draft) => ({ ...draft, posterSource: result.source }));
       } else if (mediaDraft.kind === 'video') {
         let posterSource = '';
         try {
+          setUploadStage('生成视频封面中');
           const capture = await captureVideoPoster(file);
           objectUrl = capture.objectUrl;
           if (!valid()) return;
-          const uploadedPoster = await uploadAsset(capture.file, { ...options, purpose: 'poster' });
+          setUploadStage('上传视频封面中');
+          const uploadedPoster = await uploadAsset(capture.file, { ...options, purpose: 'poster', onProgress: (percent: number) => progress(percent === 100 ? 100 : Math.min(99, Math.round(70 + percent * 0.3))) });
           if (!valid()) return;
           posterSource = uploadedPoster.source;
         } catch {
           if (!valid()) return;
+          coverFailed = true;
           message.warning('自动封面生成或上传失败，请手动上传封面后再保存');
         }
+        setMediaDraftDirty(true);
         setMediaDraft((draft) => ({ ...draft, source: result.source, sourceType: 'upload', posterSource }));
       } else {
+        setMediaDraftDirty(true);
         setMediaDraft((draft) => ({ ...draft, source: result.source, sourceType: 'upload' }));
       }
-      message.success('上传完成，请保存素材');
+      if (coverFailed) {
+        setUploadStage('封面待补充');
+      } else {
+        setUploadStage('上传完成');
+        setUploadProgress(100);
+        message.success('上传完成，请保存素材');
+      }
     } catch (error) {
       if (valid()) message.error(error instanceof Error ? error.message : '上传失败');
     } finally {
@@ -505,7 +534,7 @@ export function AdminApp() {
     heroModeRef.current = mode;
     setModeBusy(true);
     setSelectedMediaIds([]);
-    closeDrawer();
+    closeDrawer(true);
     setSettings((prev) => prev ? { ...prev, heroMediaMode: mode } : null);
     try {
       await saveHeroMediaMode(siteIdRef.current, mode);
@@ -542,7 +571,8 @@ export function AdminApp() {
       const payload = { ...mediaDraft, source, posterSource: mediaDraft.posterSource.trim() || null, siteId: siteIdRef.current };
       if (mediaDraft.id) await updateMediaAsset(mediaDraft.id, payload); else await createMediaAsset(payload);
       if (epoch !== siteEpoch.current || draftEpoch !== drawerEpoch.current || !mounted.current) return;
-      closeDrawer();
+      setMediaDraftDirty(false);
+      closeDrawer(true);
       await refresh();
       if (epoch === siteEpoch.current) message.success('素材已保存');
     } catch (error) {
@@ -739,12 +769,13 @@ export function AdminApp() {
   );
 
   const isDesktop = useIsDesktop();
-  const allMediaAssets = (bootstrap?.heroImages ?? []).concat(bootstrap?.heroVideo ? [bootstrap.heroVideo] : [], bootstrap?.detailImages ?? []);
-  const mediaAssets = allMediaAssets.filter((item) => {
-    const statusMatch = mediaStatusFilter === 'all' || (mediaStatusFilter === 'enabled' ? item.enabled : !item.enabled);
-    const sectionMatch = item.section === mediaTab;
-    return statusMatch && sectionMatch;
-  });
+  const allMediaAssets = [...(bootstrap?.heroImages ?? []), ...(bootstrap?.heroVideo ? [bootstrap.heroVideo] : []), ...(bootstrap?.detailImages ?? [])];
+  const mediaTabFilter = mediaTab === 'detail' ? { section: 'detail' as const, kind: 'image' as const } : { section: 'hero' as const, kind: mediaTab === 'video' ? 'video' as const : 'image' as const };
+  const mediaAssets = Array.from(new Map(allMediaAssets
+    .filter((item) => item.siteId === currentSiteId && item.section === mediaTabFilter.section && (!mediaTabFilter.kind || (item.kind ?? 'image') === mediaTabFilter.kind))
+    .map((item) => [item.id, item])).values()).filter((item) => {
+      return mediaStatusFilter === 'all' || (mediaStatusFilter === 'enabled' ? item.enabled : !item.enabled);
+    });
   const reviews = (bootstrap?.allReviews ?? []).filter((item) => {
     const statusMatch = reviewStatusFilter === 'all' || (reviewStatusFilter === 'enabled' ? item.enabled : !item.enabled);
     const query = reviewQuery.trim().toLowerCase();
@@ -766,30 +797,31 @@ export function AdminApp() {
   if (!authed) return <div className="admin-login-page"><Card className="admin-login-card"><Text type="secondary">多站点后台</Text><Title level={2}>后台登录</Title><Text type="secondary">后台仅支持桌面端访问，请使用电脑浏览器继续。</Text><form onSubmit={handleLogin}><label>密码<Input.Password value={password} onChange={(event) => setPassword(event.target.value)} placeholder="请输入后台密码" /></label><Button htmlType="submit" type="primary" block>登录</Button></form></Card></div>;
 
   const settingsInitialValues = settings ? { ...settings, guarantee: settings.guarantee.join('\n'), reviewTags: settings.reviewTags.join('\n'), paymentSuccessMessage: settings.paymentSuccessMessage || '添加客服领取服用说明', customerServiceUrl: settings.customerServiceUrl || '', customerServiceQrCode: settings.customerServiceQrCode || '' } : undefined;
-  const settingsForm = settings ? <Form form={settingsFormInstance} layout="vertical" initialValues={settingsInitialValues} onFinish={handleSettingsSave}><Alert type="info" message="价格管理已迁移至 SKU 管理页面" description="请在 SKU 管理中修改商品价格" showIcon style={{ marginBottom: 16 }} /><Row gutter={20}><Col span={24}><Form.Item name="shopName" label="店铺名"><Input /></Form.Item></Col><Col span={12}><Form.Item name="title" label="标题"><Input /></Form.Item></Col><Col span={12}><Form.Item name="subtitle" label="副标题"><Input /></Form.Item></Col><Col span={24}><Form.Item name="productDescription" label="描述"><Input.TextArea rows={3} /></Form.Item></Col><Col span={24}><Form.Item name="marqueeText" label="滚动文案"><Input /></Form.Item></Col><Col span={12}><Form.Item name="shippingNote" label="邮费说明"><Input /></Form.Item></Col><Col span={12}><Form.Item name="shippingTime" label="发货时间"><Input /></Form.Item></Col><Col span={24}><Form.Item name="guarantee" label="保障文案，每行一个"><Input.TextArea rows={3} /></Form.Item></Col><Col span={24}><Form.Item name="reviewTags" label="评价标签，每行一个"><Input.TextArea rows={2} /></Form.Item></Col><Col span={24}><Form.Item name="reminder" label="提示语"><Input /></Form.Item></Col><Col span={24}><Form.Item name="paymentSuccessMessage" label="支付成功引导文案"><Input placeholder="添加客服领取服用说明" /></Form.Item></Col><Col span={24}><Form.Item name="customerServiceQrCode" label="客服二维码图片" extra="上传客服微信二维码（建议尺寸 400x400）"><Input placeholder="图片 URL" /><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1} style={{ marginTop: '8px' }}><Button icon={<UploadOutlined />}>上传二维码</Button></Upload>{settings.customerServiceQrCode && <div style={{ marginTop: '12px' }}><img src={settings.customerServiceQrCode} alt="客服二维码预览" style={{ width: '120px', height: '120px', border: '1px solid #e5e7eb', borderRadius: '8px' }} /></div>}</Form.Item></Col><Col span={24}><Form.Item name="customerServiceUrl" label="客服微信链接" extra="支持微信直链，与二维码至少填写一个"><Input placeholder="weixin://dl/business/?t=xxxxx" /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">保存配置</Button></Space></Form> : null;
-  const siteForm = <Form layout="vertical" onFinish={handleSiteSave}><Form.Item label="站点名称" required><Input value={siteDraft.name} onChange={(event) => setSiteDraft({ ...siteDraft, name: event.target.value })} placeholder="例如 华东商城" /></Form.Item><Form.Item label="站点标识" required><Input value={siteDraft.slug} onChange={(event) => setSiteDraft({ ...siteDraft, slug: event.target.value })} placeholder="例如 east-store" /></Form.Item>{siteDraft.id ? null : <Form.Item label="复制模板"><Select value={siteDraft.templateSiteId} onChange={(templateSiteId) => setSiteDraft({ ...siteDraft, templateSiteId })} options={(bootstrap?.sites ?? []).map((site) => ({ value: site.id, label: site.name }))} /></Form.Item>}<Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{siteDraft.id ? '保存站点' : '创建站点'}</Button></Space></Form>;
+  const settingsForm = settings ? <Form form={settingsFormInstance} layout="vertical" initialValues={settingsInitialValues} onFinish={handleSettingsSave}><Alert type="info" message="价格管理已迁移至 SKU 管理页面" description="请在 SKU 管理中修改商品价格" showIcon style={{ marginBottom: 16 }} /><Row gutter={20}><Col span={24}><Form.Item name="shopName" label="店铺名"><Input /></Form.Item></Col><Col span={12}><Form.Item name="title" label="标题"><Input /></Form.Item></Col><Col span={12}><Form.Item name="subtitle" label="副标题"><Input /></Form.Item></Col><Col span={24}><Form.Item name="productDescription" label="描述"><Input.TextArea rows={3} /></Form.Item></Col><Col span={24}><Form.Item name="marqueeText" label="滚动文案"><Input /></Form.Item></Col><Col span={12}><Form.Item name="shippingNote" label="邮费说明"><Input /></Form.Item></Col><Col span={12}><Form.Item name="shippingTime" label="发货时间"><Input /></Form.Item></Col><Col span={24}><Form.Item name="guarantee" label="保障文案，每行一个"><Input.TextArea rows={3} /></Form.Item></Col><Col span={24}><Form.Item name="reviewTags" label="评价标签，每行一个"><Input.TextArea rows={2} /></Form.Item></Col><Col span={24}><Form.Item name="reminder" label="提示语"><Input /></Form.Item></Col><Col span={24}><Form.Item name="paymentSuccessMessage" label="支付成功引导文案"><Input placeholder="添加客服领取服用说明" /></Form.Item></Col><Col span={24}><Form.Item name="customerServiceQrCode" label="客服二维码图片" extra="上传客服微信二维码（建议尺寸 400x400）"><Input placeholder="图片 URL" /><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1} style={{ marginTop: '8px' }}><Button icon={<UploadOutlined />}>上传二维码</Button></Upload>{settings.customerServiceQrCode && <div style={{ marginTop: '12px' }}><img src={settings.customerServiceQrCode} alt="客服二维码预览" style={{ width: '120px', height: '120px', border: '1px solid #e5e7eb', borderRadius: '8px' }} /></div>}</Form.Item></Col><Col span={24}><Form.Item name="customerServiceUrl" label="客服微信链接" extra="支持微信直链，与二维码至少填写一个"><Input placeholder="weixin://dl/business/?t=xxxxx" /></Form.Item></Col></Row><Space><Button onClick={() => closeDrawer()}>取消</Button><Button type="primary" htmlType="submit">保存配置</Button></Space></Form> : null;
+  const siteForm = <Form layout="vertical" onFinish={handleSiteSave}><Form.Item label="站点名称" required><Input value={siteDraft.name} onChange={(event) => setSiteDraft({ ...siteDraft, name: event.target.value })} placeholder="例如 华东商城" /></Form.Item><Form.Item label="站点标识" required><Input value={siteDraft.slug} onChange={(event) => setSiteDraft({ ...siteDraft, slug: event.target.value })} placeholder="例如 east-store" /></Form.Item>{siteDraft.id ? null : <Form.Item label="复制模板"><Select value={siteDraft.templateSiteId} onChange={(templateSiteId) => setSiteDraft({ ...siteDraft, templateSiteId })} options={(bootstrap?.sites ?? []).map((site) => ({ value: site.id, label: site.name }))} /></Form.Item>}<Space><Button onClick={() => closeDrawer()}>取消</Button><Button type="primary" htmlType="submit">{siteDraft.id ? '保存站点' : '创建站点'}</Button></Space></Form>;
   const mediaForm = <Form layout="vertical" onFinish={handleMediaSave} disabled={mediaBusy || modeBusy || (mediaDraft.section === 'hero' && mediaDraft.kind !== heroMode)}>
-    <Form.Item label="区域"><Input aria-label="素材区域" readOnly value={mediaDraft.section === 'hero' ? '首页媒体' : '商品详情图'} /></Form.Item>
-    <Form.Item label="来源类型"><Select aria-label="来源类型" value={mediaDraft.sourceType} onChange={(sourceType) => setMediaDraft({ ...mediaDraft, sourceType })} options={[{ value: 'url', label: 'URL' }, { value: 'upload', label: '上传' }]} /></Form.Item>
-    <Form.Item label={mediaDraft.kind === 'video' ? '视频地址' : '图片地址'}><Input aria-label="素材地址" value={mediaDraft.source} onChange={(event) => setMediaDraft({ ...mediaDraft, source: event.target.value, sourceType: 'url', ...(mediaDraft.kind === 'video' ? { posterSource: '' } : {}) })} placeholder="https://... 或 /uploads/..." /></Form.Item>
+    <Form.Item label="区域"><Input aria-label="素材区域" readOnly value={mediaDraft.section === 'hero' ? (mediaDraft.kind === 'video' ? '首页视频' : '轮播图片') : '商品详情图'} /></Form.Item>
+    <Form.Item label="来源类型"><Select aria-label="来源类型" value={mediaDraft.sourceType} onChange={(sourceType) => { setMediaDraftDirty(true); setMediaDraft({ ...mediaDraft, sourceType }); }} options={[{ value: 'url', label: 'URL' }, { value: 'upload', label: '上传' }]} /></Form.Item>
+    <Form.Item label={mediaDraft.kind === 'video' ? '视频地址' : '图片地址'}><Input aria-label="素材地址" value={mediaDraft.source} onChange={(event) => { setMediaDraftDirty(true); setMediaDraft({ ...mediaDraft, source: event.target.value, sourceType: 'url', ...(mediaDraft.kind === 'video' ? { posterSource: '' } : {}) }); }} placeholder="https://... 或 /uploads/..." /></Form.Item>
     <Form.Item label="上传文件" extra={mediaDraft.kind === 'video' ? '仅 MP4，最大 50MB；自动截取首帧作为封面，失败时请手动上传封面。' : undefined}>
+      {mediaBusy && <div aria-label="上传进度"><Text>{uploadStage}</Text><Progress percent={uploadProgress} status={uploadProgress === 100 ? 'success' : 'active'} /></div>}
       <Upload accept={mediaDraft.kind === 'video' ? 'video/mp4,.mp4' : 'image/*'} showUploadList={false} disabled={mediaBusy} beforeUpload={(file) => { void handleUploadSelected(file); return false; }}><Button icon={<UploadOutlined />}>{mediaDraft.kind === 'video' ? '上传 / 替换视频' : '选择文件'}</Button></Upload>
     </Form.Item>
     {mediaDraft.kind === 'video' && <>
-      <Form.Item label="视频封面" required extra="外链视频必须手动提供封面。更换视频地址会清空旧封面。"><Input aria-label="视频封面地址" value={mediaDraft.posterSource} onChange={(event) => setMediaDraft({ ...mediaDraft, posterSource: event.target.value })} /></Form.Item>
+      <Form.Item label="视频封面" required extra="外链视频必须手动提供封面。更换视频地址会清空旧封面。"><Input aria-label="视频封面地址" value={mediaDraft.posterSource} onChange={(event) => { setMediaDraftDirty(true); setMediaDraft({ ...mediaDraft, posterSource: event.target.value }); }} /></Form.Item>
       <Upload accept="image/*" showUploadList={false} disabled={mediaBusy} beforeUpload={(file) => { void handleUploadSelected(file, true); return false; }}><Button>上传 / 更换封面</Button></Upload>
       {mediaDraft.posterSource && <img src={resolveMediaUrl(mediaDraft.posterSource)} alt="视频封面预览" style={{ width: 160, display: 'block' }} />}
-      {mediaDraft.source && <video aria-label="视频预览" src={resolveMediaUrl(mediaDraft.source)} poster={mediaDraft.posterSource ? resolveMediaUrl(mediaDraft.posterSource) : undefined} controls preload="metadata" style={{ width: '100%', maxHeight: 280 }} />}
+      {mediaDraft.source && <video aria-label="视频预览" src={resolveMediaUrl(mediaDraft.source)} poster={mediaDraft.posterSource ? resolveMediaUrl(mediaDraft.posterSource) : undefined} controls preload="none" style={{ width: '100%', maxHeight: 280 }} />}
     </>}
-    <Form.Item label="替代文本"><Input aria-label="替代文本" value={mediaDraft.alt} onChange={(event) => setMediaDraft({ ...mediaDraft, alt: event.target.value })} /></Form.Item>
-    {mediaDraft.kind === 'image' && <Form.Item label="排序"><Input type="number" value={mediaDraft.sortOrder} onChange={(event) => setMediaDraft({ ...mediaDraft, sortOrder: Number(event.target.value) })} /></Form.Item>}
-    <Form.Item label="启用"><Switch aria-label="素材启用" checked={mediaDraft.enabled} onChange={(enabled) => setMediaDraft({ ...mediaDraft, enabled })} /></Form.Item>
-    <Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit" loading={mediaBusy} disabled={mediaBusy || modeBusy}>保存素材</Button></Space>
+    <Form.Item label="替代文本"><Input aria-label="替代文本" value={mediaDraft.alt} onChange={(event) => { setMediaDraftDirty(true); setMediaDraft({ ...mediaDraft, alt: event.target.value }); }} /></Form.Item>
+    {mediaDraft.kind === 'image' && <Form.Item label="排序"><Input type="number" value={mediaDraft.sortOrder} onChange={(event) => { setMediaDraftDirty(true); setMediaDraft({ ...mediaDraft, sortOrder: Number(event.target.value) }); }} /></Form.Item>}
+    <Form.Item label="启用"><Switch aria-label="素材启用" checked={mediaDraft.enabled} onChange={(enabled) => { setMediaDraftDirty(true); setMediaDraft({ ...mediaDraft, enabled }); }} /></Form.Item>
+    <Space><Button onClick={() => closeDrawer()}>取消</Button><Button type="primary" htmlType="submit" loading={mediaBusy} disabled={mediaBusy || modeBusy}>保存素材</Button></Space>
   </Form>;
-  const reviewForm = <Form layout="vertical" onFinish={handleReviewSave}><Form.Item label="展示日期（北京时间）"><Input aria-label="展示日期" type="date" value={reviewDraft.displayDate} onChange={(event) => setReviewDraft({ ...reviewDraft, displayDate: event.target.value })} /></Form.Item><Form.Item label="用户名"><Input value={reviewDraft.name} onChange={(event) => setReviewDraft({ ...reviewDraft, name: event.target.value })} /></Form.Item><Form.Item label="内容"><Input.TextArea rows={4} value={reviewDraft.content} onChange={(event) => setReviewDraft({ ...reviewDraft, content: event.target.value })} /></Form.Item><Form.Item label="图片地址，每行一个"><Input.TextArea rows={3} value={reviewDraft.images} onChange={(event) => setReviewDraft({ ...reviewDraft, images: event.target.value })} /></Form.Item><Form.Item label="上传评价图片"><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1}><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item><Row gutter={20}><Col span={12}><Form.Item label="排序"><Input type="number" value={reviewDraft.homeOrder} onChange={(event) => setReviewDraft({ ...reviewDraft, homeOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={12}><Form.Item label="首页展示"><Switch checked={reviewDraft.featuredOnHome} onChange={(featuredOnHome) => setReviewDraft({ ...reviewDraft, featuredOnHome })} /></Form.Item></Col><Col span={12}><Form.Item label="启用"><Switch checked={reviewDraft.enabled} onChange={(enabled) => setReviewDraft({ ...reviewDraft, enabled })} /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{reviewDraft.id ? '保存修改' : '新增评价'}</Button></Space></Form>;
-  const purchaseForm = <Form layout="vertical" onFinish={handlePurchaseSave}><Form.Item label="文案"><Input value={purchaseDraft.content} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, content: event.target.value })} /></Form.Item><Form.Item label="排序"><Input type="number" value={purchaseDraft.sortOrder} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, sortOrder: Number(event.target.value) })} /></Form.Item><Form.Item label="启用"><Switch checked={purchaseDraft.enabled} onChange={(enabled) => setPurchaseDraft({ ...purchaseDraft, enabled })} /></Form.Item><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{purchaseDraft.id ? '保存修改' : '新增文案'}</Button></Space></Form>;
-  const skuForm = <Form layout="vertical" onFinish={handleSkuSave}><Row gutter={20}><Col span={12}><Form.Item label="规格编码" required><Input value={skuDraft.skuCode} onChange={(event) => setSkuDraft({ ...skuDraft, skuCode: event.target.value })} placeholder="single" /></Form.Item></Col><Col span={12}><Form.Item label="规格名称" required><Input value={skuDraft.name} onChange={(event) => setSkuDraft({ ...skuDraft, name: event.target.value })} /></Form.Item></Col><Col span={24}><Form.Item label="副标题"><Input value={skuDraft.subtitle} onChange={(event) => setSkuDraft({ ...skuDraft, subtitle: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="售价"><Input value={skuDraft.price} onChange={(event) => setSkuDraft({ ...skuDraft, price: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="原价"><Input value={skuDraft.originalPrice} onChange={(event) => setSkuDraft({ ...skuDraft, originalPrice: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="价格标签"><Input value={skuDraft.saleLabel} onChange={(event) => setSkuDraft({ ...skuDraft, saleLabel: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="高亮"><Input value={skuDraft.highlight} onChange={(event) => setSkuDraft({ ...skuDraft, highlight: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="排序"><Input type="number" value={skuDraft.sortOrder} onChange={(event) => setSkuDraft({ ...skuDraft, sortOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={12}><Form.Item label="启用"><Switch checked={skuDraft.enabled} onChange={(enabled) => setSkuDraft({ ...skuDraft, enabled })} /></Form.Item></Col></Row><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">{skuDraft.id ? '保存规格' : '新增规格'}</Button></Space></Form>;
-  const paymentForm = paymentSettings ? <Form layout="vertical" initialValues={{ ...paymentSettings, merchantSecret: '' }} onFinish={handlePaymentSettingsSave}><Form.Item name="gatewayUrl" label="网关地址" required><Input /></Form.Item><Form.Item name="merchantId" label="商户号" required><Input /></Form.Item><Form.Item name="merchantSecret" label={`商户密钥（当前 ${paymentSettings.secretMasked || '未设置'}）`}><Input.Password placeholder="留空则不修改" /></Form.Item><Form.Item name="enabledChannels" label="启用渠道"><Checkbox.Group options={[{ label: '支付宝', value: 'alipay' }, { label: '微信', value: 'wxpay' }]} /></Form.Item><Form.Item name="notifyUrl" label="回调地址" required extra="建议填相对路径（如 /api/payment/epay/notify）。支付网关会用下方的「站点公网地址」拼接出完整地址"><Input /></Form.Item><Form.Item name="returnUrl" label="返回地址" required extra="建议填写相对路径（如 /payment/return）。系统会自动拼接完整地址；若填写绝对地址，也只会取其路径部分"><Input placeholder="/payment/return" /></Form.Item><Form.Item name="publicBaseUrl" label="站点公网地址" extra="部署后填写对外访问的地址，如 https://shop.example.com 或 http://1.2.3.4:3001。支付成功后网关需要主动回调本服务来写入支付状态，因此这里必须是公网可访问的地址（不能是 localhost）。留空则使用买家下单时访问的域名。"><Input placeholder="https://shop.example.com" /></Form.Item><Space><Button onClick={closeDrawer}>取消</Button><Button type="primary" htmlType="submit">保存支付配置</Button></Space></Form> : null;
+  const reviewForm = <Form layout="vertical" onFinish={handleReviewSave}><Form.Item label="展示日期（北京时间）"><Input aria-label="展示日期" type="date" value={reviewDraft.displayDate} onChange={(event) => setReviewDraft({ ...reviewDraft, displayDate: event.target.value })} /></Form.Item><Form.Item label="用户名"><Input value={reviewDraft.name} onChange={(event) => setReviewDraft({ ...reviewDraft, name: event.target.value })} /></Form.Item><Form.Item label="内容"><Input.TextArea rows={4} value={reviewDraft.content} onChange={(event) => setReviewDraft({ ...reviewDraft, content: event.target.value })} /></Form.Item><Form.Item label="图片地址，每行一个"><Input.TextArea rows={3} value={reviewDraft.images} onChange={(event) => setReviewDraft({ ...reviewDraft, images: event.target.value })} /></Form.Item><Form.Item label="上传评价图片"><Upload beforeUpload={(file) => { void handleUploadSelected(file); return false; }} maxCount={1}><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item><Row gutter={20}><Col span={12}><Form.Item label="排序"><Input type="number" value={reviewDraft.homeOrder} onChange={(event) => setReviewDraft({ ...reviewDraft, homeOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={12}><Form.Item label="首页展示"><Switch checked={reviewDraft.featuredOnHome} onChange={(featuredOnHome) => setReviewDraft({ ...reviewDraft, featuredOnHome })} /></Form.Item></Col><Col span={12}><Form.Item label="启用"><Switch checked={reviewDraft.enabled} onChange={(enabled) => setReviewDraft({ ...reviewDraft, enabled })} /></Form.Item></Col></Row><Space><Button onClick={() => closeDrawer()}>取消</Button><Button type="primary" htmlType="submit">{reviewDraft.id ? '保存修改' : '新增评价'}</Button></Space></Form>;
+  const purchaseForm = <Form layout="vertical" onFinish={handlePurchaseSave}><Form.Item label="文案"><Input value={purchaseDraft.content} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, content: event.target.value })} /></Form.Item><Form.Item label="排序"><Input type="number" value={purchaseDraft.sortOrder} onChange={(event) => setPurchaseDraft({ ...purchaseDraft, sortOrder: Number(event.target.value) })} /></Form.Item><Form.Item label="启用"><Switch checked={purchaseDraft.enabled} onChange={(enabled) => setPurchaseDraft({ ...purchaseDraft, enabled })} /></Form.Item><Space><Button onClick={() => closeDrawer()}>取消</Button><Button type="primary" htmlType="submit">{purchaseDraft.id ? '保存修改' : '新增文案'}</Button></Space></Form>;
+  const skuForm = <Form layout="vertical" onFinish={handleSkuSave}><Row gutter={20}><Col span={12}><Form.Item label="规格编码" required><Input value={skuDraft.skuCode} onChange={(event) => setSkuDraft({ ...skuDraft, skuCode: event.target.value })} placeholder="single" /></Form.Item></Col><Col span={12}><Form.Item label="规格名称" required><Input value={skuDraft.name} onChange={(event) => setSkuDraft({ ...skuDraft, name: event.target.value })} /></Form.Item></Col><Col span={24}><Form.Item label="副标题"><Input value={skuDraft.subtitle} onChange={(event) => setSkuDraft({ ...skuDraft, subtitle: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="售价"><Input value={skuDraft.price} onChange={(event) => setSkuDraft({ ...skuDraft, price: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="原价"><Input value={skuDraft.originalPrice} onChange={(event) => setSkuDraft({ ...skuDraft, originalPrice: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="价格标签"><Input value={skuDraft.saleLabel} onChange={(event) => setSkuDraft({ ...skuDraft, saleLabel: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="高亮"><Input value={skuDraft.highlight} onChange={(event) => setSkuDraft({ ...skuDraft, highlight: event.target.value })} /></Form.Item></Col><Col span={12}><Form.Item label="排序"><Input type="number" value={skuDraft.sortOrder} onChange={(event) => setSkuDraft({ ...skuDraft, sortOrder: Number(event.target.value) })} /></Form.Item></Col><Col span={12}><Form.Item label="启用"><Switch checked={skuDraft.enabled} onChange={(enabled) => setSkuDraft({ ...skuDraft, enabled })} /></Form.Item></Col></Row><Space><Button onClick={() => closeDrawer()}>取消</Button><Button type="primary" htmlType="submit">{skuDraft.id ? '保存规格' : '新增规格'}</Button></Space></Form>;
+  const paymentForm = paymentSettings ? <Form layout="vertical" initialValues={{ ...paymentSettings, merchantSecret: '' }} onFinish={handlePaymentSettingsSave}><Form.Item name="gatewayUrl" label="网关地址" required><Input /></Form.Item><Form.Item name="merchantId" label="商户号" required><Input /></Form.Item><Form.Item name="merchantSecret" label={`商户密钥（当前 ${paymentSettings.secretMasked || '未设置'}）`}><Input.Password placeholder="留空则不修改" /></Form.Item><Form.Item name="enabledChannels" label="启用渠道"><Checkbox.Group options={[{ label: '支付宝', value: 'alipay' }, { label: '微信', value: 'wxpay' }]} /></Form.Item><Form.Item name="notifyUrl" label="回调地址" required extra="建议填相对路径（如 /api/payment/epay/notify）。支付网关会用下方的「站点公网地址」拼接出完整地址"><Input /></Form.Item><Form.Item name="returnUrl" label="返回地址" required extra="建议填写相对路径（如 /payment/return）。系统会自动拼接完整地址；若填写绝对地址，也只会取其路径部分"><Input placeholder="/payment/return" /></Form.Item><Form.Item name="publicBaseUrl" label="站点公网地址" extra="部署后填写对外访问的地址，如 https://shop.example.com 或 http://1.2.3.4:3001。支付成功后网关需要主动回调本服务来写入支付状态，因此这里必须是公网可访问的地址（不能是 localhost）。留空则使用买家下单时访问的域名。"><Input placeholder="https://shop.example.com" /></Form.Item><Space><Button onClick={() => closeDrawer()}>取消</Button><Button type="primary" htmlType="submit">保存支付配置</Button></Space></Form> : null;
   const skuColumns: ColumnsType<ProductSku> = [
     { title: '编码', dataIndex: 'skuCode' },
     { title: '规格', dataIndex: 'name' },
@@ -868,8 +900,8 @@ export function AdminApp() {
     modal.confirm({ title: '确定删除素材吗？', content: '删除后无法恢复。', okText: '确认删除', cancelText: '取消', onOk: () => mutateMedia(items, 'delete', epoch) });
   };
   const mediaColumns: ColumnsType<MediaAsset> = [
-    { title: '预览', dataIndex: 'resolvedUrl', render: (url: string, item: MediaAsset) => { const source = resolveMediaUrl(item.source || url); const poster = item.posterSource ? resolveMediaUrl(item.posterSource) : undefined; return item.kind === 'video' ? <video aria-label="已保存视频预览" src={source} poster={poster} controls preload="metadata" style={{ width: 200, maxHeight: 150 }} /> : <img className="admin-table-thumb" src={source} alt={item.alt} />; } },
-    { title: '区域', dataIndex: 'section', render: (section: string) => section === 'hero' ? '首页媒体' : '商品详情图' },
+    { title: '预览', dataIndex: 'resolvedUrl', render: (url: string, item: MediaAsset) => { const source = resolveMediaUrl(item.source || url); const poster = item.posterSource ? resolveMediaUrl(item.posterSource) : undefined; return item.kind === 'video' ? <><img src={poster} alt="视频封面" style={{ width: 80, height: 80, objectFit: 'cover' }} /><Button type="link" onClick={() => setMediaPreview(item)}>点击预览</Button></> : <img className="admin-table-thumb" src={source} alt={item.alt} />; } },
+    { title: '分类', dataIndex: 'kind', render: (kind: string | undefined, item: MediaAsset) => <Tag color={kind === 'video' ? 'blue' : 'green'}>{item.section === 'detail' ? '商品详情图' : kind === 'video' ? '首页视频' : '轮播图片'}</Tag> },
     { title: '地址', dataIndex: 'resolvedUrl', ellipsis: true },
     { title: '排序', dataIndex: 'sortOrder' },
     { title: '状态', dataIndex: 'enabled', render: (enabled: boolean, item: MediaAsset) => <Switch aria-label={`启用素材 ${item.id}`} checked={enabled} disabled={!canEditMedia(item.section, item.kind ?? 'image')} onChange={(value) => void mutateMedia([item], value ? 'enable' : 'disable')} /> },
@@ -922,7 +954,7 @@ export function AdminApp() {
   const handleBatchPurchaseEnable = () => confirmBulkAction('批量启用文案', `已选择 ${selectedPurchaseIds.length} 项，确认启用吗？`, async () => { await Promise.all(selectedPurchaseItems.map((item) => updateFloatingPurchase(item.id, purchaseUpdatePayload(item, true)))); }, '浮层文案已启用');
   const handleBatchPurchaseDisable = () => confirmBulkAction('批量禁用文案', `已选择 ${selectedPurchaseIds.length} 项，确认禁用吗？`, async () => { await Promise.all(selectedPurchaseItems.map((item) => updateFloatingPurchase(item.id, purchaseUpdatePayload(item, false)))); }, '浮层文案已禁用');
   const reviewTable = <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedReviewIds, onChange: (keys) => setSelectedReviewIds(keys as number[]) }} title={() => renderBatchToolbar('评价', selectedReviewIds.length, handleBatchReviewDelete, handleBatchReviewEnable, handleBatchReviewDisable)} columns={reviewColumns} dataSource={reviews} loading={loading} pagination={{ pageSize: 8, showSizeChanger: true }} locale={{ emptyText: <Empty description="暂无评价" /> }} />;
-  const mediaTable = <Table aria-label={mediaTab === 'hero' ? '首页图片列表' : '商品详情图列表'} rowKey="id" rowSelection={{ selectedRowKeys: selectedMediaIds, onChange: (keys) => setSelectedMediaIds(keys as number[]), getCheckboxProps: (item) => ({ disabled: !canEditMedia(item.section, 'image') }) }} title={() => renderBatchToolbar('图片', canEditMedia(mediaTab, 'image') ? selectedMediaIds.length : 0, handleBatchMediaDelete, handleBatchMediaEnable, handleBatchMediaDisable)} columns={mediaColumns} dataSource={mediaAssets} loading={loading} pagination={{ pageSize: 8, showSizeChanger: true }} />;
+  const mediaTable = <Table aria-label={mediaTab === 'detail' ? '商品详情图列表' : mediaTab === 'video' ? '首页视频列表' : '轮播图片列表'} rowKey="id" rowSelection={{ selectedRowKeys: selectedMediaIds, onChange: (keys) => setSelectedMediaIds(keys as number[]), getCheckboxProps: (item) => ({ disabled: !canEditMedia(item.section, item.kind ?? 'image') }) }} title={() => renderBatchToolbar(mediaTab === 'video' ? '视频' : '图片', canEditMedia(mediaTab === 'detail' ? 'detail' : 'hero', mediaTab === 'video' ? 'video' : 'image') ? selectedMediaIds.length : 0, handleBatchMediaDelete, handleBatchMediaEnable, handleBatchMediaDisable)} columns={mediaColumns} dataSource={mediaAssets} loading={loading} pagination={{ pageSize: 8, showSizeChanger: true }} />;
   const purchaseTable = <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedPurchaseIds, onChange: (keys) => setSelectedPurchaseIds(keys as number[]) }} title={() => renderBatchToolbar('文案', selectedPurchaseIds.length, handleBatchPurchaseDelete, handleBatchPurchaseEnable, handleBatchPurchaseDisable)} columns={purchaseColumns} dataSource={bootstrap?.floatingPurchases ?? []} loading={loading} pagination={{ pageSize: 8 }} />;
   const content = activePage === 'dashboard' ? (
     <>
@@ -1059,22 +1091,17 @@ export function AdminApp() {
     <>
       <div className="admin-page-heading">
         <div>
-          <Title level={2}>图片管理</Title>
+          <Title level={2}>媒体管理</Title>
           <Text type="secondary">首页轮播和详情图片按区域独立管理。</Text>
         </div>
         <Space>
-          <Button icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'detail')}>
-            添加详情图
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'hero', heroMode)}>
-            {heroMode === 'video' ? '添加视频' : '添加轮播图'}
-          </Button>
+          {mediaTab === 'detail' ? <Button type="primary" icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'detail', 'image')}>添加详情图</Button> : <Button type="primary" icon={<PlusOutlined />} disabled={(mediaTab === 'video' ? heroMode !== 'video' : heroMode !== 'image') || modeBusy} title={(mediaTab === 'video' ? heroMode !== 'video' : heroMode !== 'image') ? '请先切换首页媒体模式' : undefined} onClick={() => openMedia(undefined, 'hero', mediaTab === 'video' ? 'video' : 'image')}>{mediaTab === 'video' ? '添加首页视频' : '添加轮播图'}</Button>}
         </Space>
       </div>
         <Card className="admin-filter-card">
           <Space wrap>
-            <Tabs activeKey={mediaTab} onChange={(key) => { setMediaTab(key as MediaSection); setSelectedMediaIds([]); }} items={[{ key: 'hero', label: '首页媒体' }, { key: 'detail', label: '商品详情图' }]} />
-            {mediaTab === 'hero' && <Radio.Group aria-label="首页媒体模式" value={heroMode} onChange={(event) => void handleModeChange(event.target.value)} disabled={modeBusy} options={[{ value: 'image', label: '轮播图片' }, { value: 'video', label: '单个视频' }]} optionType="button" />}
+            <Tabs activeKey={mediaTab} onChange={(key) => { setMediaTab(key as 'carousel' | 'video' | 'detail'); setSelectedMediaIds([]); }} items={[{ key: 'carousel', label: '轮播图片' }, { key: 'video', label: '首页视频' }, { key: 'detail', label: '商品详情图' }]} />
+            {mediaTab !== 'detail' && <Radio.Group aria-label="首页媒体模式" value={heroMode} onChange={(event) => void handleModeChange(event.target.value)} disabled={modeBusy || mediaBusy} options={[{ value: 'image', label: '轮播图片' }, { value: 'video', label: '单个视频' }]} optionType="button" />}
             <Select
               aria-label="图片状态筛选"
               value={mediaStatusFilter}
@@ -1172,10 +1199,13 @@ export function AdminApp() {
           </Header>
           <Content className="antd-admin-content">{loading && !bootstrap ? <Spin size="large" /> : content}</Content>
         </Layout>
-        <Drawer title={drawerTitle} open={Boolean(drawer)} onClose={closeDrawer} size={drawer === 'settings' || drawer === 'payment' ? 'large' : 'default'} destroyOnClose>
+        <Drawer title={drawerTitle} open={Boolean(drawer)} onClose={() => closeDrawer()} size={drawer === 'settings' || drawer === 'payment' ? 'large' : 'default'} keyboard={!mediaBusy && !modeBusy} mask={{ closable: !mediaBusy && !modeBusy }} closable={!mediaBusy && !modeBusy} destroyOnHidden>
           {drawerContent}
         </Drawer>
       </Layout>
+      <Modal open={Boolean(mediaPreview)} title="视频预览" footer={null} destroyOnHidden onCancel={() => setMediaPreview(null)}>
+        {mediaPreview && <video aria-label="视频预览播放器" src={resolveMediaUrl(mediaPreview.source)} poster={mediaPreview.posterSource ? resolveMediaUrl(mediaPreview.posterSource) : undefined} controls autoPlay style={{ width: '100%', maxWidth: '100%' }} />}
+      </Modal>
       <OrderExportModal
         visible={exportModalVisible}
         onCancel={() => setExportModalVisible(false)}

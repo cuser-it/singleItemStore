@@ -200,7 +200,7 @@ export async function deleteFloatingPurchase(id: number, siteId?: number | null)
   return requestJson<void>(`/api/admin/floating-purchases/${id}${params}`, { method: 'DELETE' });
 }
 
-export async function uploadAsset(file: File, options: { siteId?: number | null; section?: 'hero' | 'detail'; kind?: AdminMediaKind; purpose?: 'poster' } = {}) {
+export async function uploadAsset(file: File, options: { siteId?: number | null; section?: 'hero' | 'detail'; kind?: AdminMediaKind; purpose?: 'poster'; onProgress?: (percent: number) => void } = {}) {
   const formData = new FormData();
   formData.append('file', file);
   const params = new URLSearchParams();
@@ -209,6 +209,31 @@ export async function uploadAsset(file: File, options: { siteId?: number | null;
   if (options.kind) params.set('kind', options.kind);
   if (options.purpose) params.set('purpose', options.purpose);
   const query = params.toString();
+  if (options.onProgress) {
+    return new Promise<{ source: string; resolvedUrl: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `/api/admin/upload${query ? `?${query}` : ''}`);
+      xhr.withCredentials = true;
+      xhr.timeout = 10 * 60 * 1000;
+      options.onProgress?.(0);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) options.onProgress?.(Math.min(99, Math.round(event.loaded / event.total * 100)));
+      };
+      xhr.onerror = () => reject(new Error('上传网络异常，请重试'));
+      xhr.ontimeout = () => reject(new Error('上传超时，请重试'));
+      xhr.onabort = () => reject(new Error('上传已取消'));
+      xhr.onload = () => {
+        try {
+          const result = JSON.parse(xhr.responseText);
+          if (xhr.status < 200 || xhr.status >= 300) throw new Error(result.message || `上传失败 (${xhr.status})`);
+          if (typeof result.source !== 'string' || typeof result.resolvedUrl !== 'string') throw new Error('上传响应无效');
+          options.onProgress?.(100);
+          resolve(result);
+        } catch (error) { reject(error instanceof Error ? error : new Error('上传失败')); }
+      };
+      xhr.send(formData);
+    });
+  }
   return requestJson<{ source: string; resolvedUrl: string }>(`/api/admin/upload${query ? `?${query}` : ''}`, {
     method: 'POST',
     body: formData,
