@@ -111,7 +111,8 @@ describe('backend', () => {
     await login();
 
     const uploadForm = new FormData();
-    uploadForm.append('file', new Blob(['hello image'], { type: 'text/plain' }), 'hero.txt');
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
+    uploadForm.append('file', new Blob([png], { type: 'image/png' }), 'hero.png');
 
     const uploadResponse = await fetch(`${baseUrl}/api/admin/upload`, {
       method: 'POST',

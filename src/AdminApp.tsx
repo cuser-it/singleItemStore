@@ -227,7 +227,15 @@ export function AdminApp() {
   const heroMode = settings?.heroMediaMode ?? 'image';
   const heroModeRef = useRef(heroMode);
   heroModeRef.current = heroMode;
-  useEffect(() => () => { mounted.current = false; siteEpoch.current++; drawerEpoch.current++; }, []);
+  useEffect(() => {
+    // StrictMode replays setup after cleanup; restore the live-mount flag.
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      siteEpoch.current++;
+      drawerEpoch.current++;
+    };
+  }, []);
   const [selectedReviewIds, setSelectedReviewIds] = useState<number[]>([]);
   const [selectedMediaIds, setSelectedMediaIds] = useState<number[]>([]);
   const [selectedPurchaseIds, setSelectedPurchaseIds] = useState<number[]>([]);
