@@ -74,7 +74,8 @@ export async function fetchAdminBootstrap(siteId?: number | null) {
 
 export async function fetchAdminMe() {
   try {
-    await requestJson<{ authenticated: true }>('/api/admin/me');
+    const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('admin auth timeout')), 10000));
+    await Promise.race([requestJson<{ authenticated: true }>('/api/admin/me'), timeout]);
     return true;
   } catch {
     return false;
