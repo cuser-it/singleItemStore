@@ -106,10 +106,10 @@ function mapSettings(record: {
   };
 }
 async function verifyDatabaseStructure() {
-  const db = await client.$queryRawUnsafe<Array<{ database: string; schema: string; table_name: string | null }>>(`SELECT current_database() AS database, current_schema() AS schema, to_regclass($1) AS table_name`, '"Site"');
+  const db = await client.$queryRawUnsafe<Array<{ database: string; schema: string; table_name: string | null }>>(`SELECT current_database() AS database, current_schema() AS schema, to_regclass($1)::text AS table_name`, '"Site"');
   if (db[0]?.database !== 'fsd') throw new Error(`Refusing to initialize database ${db[0]?.database ?? 'unknown'}; DATABASE_URL must point to fsd`);
   const required = ['Site', 'SiteSettings', 'MediaAsset', 'Review', 'FloatingPurchase', 'ProductSku', 'Order', 'OperationLog'];
-  const rows = await client.$queryRawUnsafe<Array<{ table_name: string | null }>>(`SELECT to_regclass(x) AS table_name FROM unnest($1::text[]) AS x`, required.map((name) => `"${name}"`));
+  const rows = await client.$queryRawUnsafe<Array<{ table_name: string | null }>>(`SELECT to_regclass(x)::text AS table_name FROM unnest($1::text[]) AS x`, required.map((name) => `"${name}"`));
   const present = rows.filter((row) => row.table_name).length;
   if (present > 0 && present < required.length) {
     const missing = rows.map((row, index) => row.table_name ? null : required[index]).filter(Boolean);
