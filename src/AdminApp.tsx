@@ -1099,7 +1099,7 @@ export function AdminApp() {
           <Text type="secondary">首页轮播和详情图片按区域独立管理。</Text>
         </div>
         <Space>
-          {mediaTab === 'detail' ? <Button type="primary" icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'detail', 'image')}>添加详情图</Button> : <Button type="primary" icon={<PlusOutlined />} disabled={(mediaTab === 'video' ? heroMode !== 'video' : heroMode !== 'image') || modeBusy} title={(mediaTab === 'video' ? heroMode !== 'video' : heroMode !== 'image') ? '请先切换首页媒体模式' : undefined} onClick={() => openMedia(undefined, 'hero', mediaTab === 'video' ? 'video' : 'image')}>{mediaTab === 'video' ? '添加首页视频' : '添加轮播图'}</Button>}
+          {mediaTab === 'detail' ? <Button type="primary" icon={<PlusOutlined />} onClick={() => openMedia(undefined, 'detail', 'image')}>添加详情图</Button> : <Button type="primary" icon={<PlusOutlined />} disabled={(mediaTab === 'video' ? heroMode !== 'video' || mediaAssets.length > 0 : heroMode !== 'image') || modeBusy} title={mediaTab === 'video' && mediaAssets.length > 0 ? '首页只允许一段视频，请先删除已有视频' : (mediaTab === 'video' && heroMode !== 'video' ? '请先切换首页媒体模式' : undefined)} onClick={() => { if (mediaTab === 'video' && mediaAssets.length > 0) { message.info('首页只允许一段视频，请先删除已有视频'); return; } openMedia(undefined, 'hero', mediaTab === 'video' ? 'video' : 'image'); }}>{mediaTab === 'video' ? '添加首页视频' : '添加轮播图'}</Button>}
         </Space>
       </div>
         <Card className="admin-filter-card">
