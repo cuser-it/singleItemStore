@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultBootstrap } from '../shared/site';
 import { AdminAppShell } from './AdminApp';
@@ -128,8 +128,21 @@ describe('admin media upload locking', { timeout: 30000 }, () => {
     expect(screen.getByText('42%')).toBeInTheDocument();
 
     expect(screen.getByText('上传文件中')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
-    resolveUpload?.({ source: '/uploads/image.jpg', resolvedUrl: '/uploads/image.jpg' });
+    const drawer = document.querySelector('.ant-drawer')!;
+    const cancel = Array.from(drawer.querySelectorAll('button')).find(button => button.textContent?.replace(/\s/g, '') === '取消')!;
+    expect(cancel).toBeDisabled();
+    fireEvent.click(cancel);
+    fireEvent.keyDown(drawer, { key: 'Escape', keyCode: 27 });
+    const mask = drawer.querySelector('.ant-drawer-mask');
+    if (mask) fireEvent.click(mask);
+    expect(screen.getByText('上传文件中')).toBeInTheDocument();
+    await act(async () => { resolveUpload?.({ source: '/uploads/image.jpg', resolvedUrl: '/uploads/image.jpg' }); });
     await waitFor(() => expect(screen.queryByText('上传文件中')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('素材地址')).toHaveValue('/uploads/image.jpg');
+    expect(api.createMediaAsset).not.toHaveBeenCalled();
+    fireEvent.click(cancel);
+    expect(await screen.findByText('放弃未保存的媒体吗？')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('继续编辑'));
+    expect(screen.getByLabelText('素材地址')).toHaveValue('/uploads/image.jpg');
   });
 });

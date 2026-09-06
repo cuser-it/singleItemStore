@@ -331,7 +331,7 @@ export function AdminApp() {
     setCurrentSiteId(siteId);
     const params = new URLSearchParams(window.location.search);
     params.set('siteId', String(siteId));
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    const newUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
     window.history.pushState({}, '', newUrl);
   };
 
@@ -359,6 +359,8 @@ export function AdminApp() {
     const defaultOrder = section === 'hero' ? (bootstrap?.heroImages.length ?? 0) + 1 : (bootstrap?.detailImages.length ?? 0) + 1;
     setMediaDraft(item ? { id: item.id, kind, posterSource: item.posterSource ?? '', section, sourceType: item.sourceType, source: item.source, alt: item.alt, sortOrder: item.sortOrder, enabled: item.enabled } : { section, kind, posterSource: '', sourceType: 'url', source: '', alt: '', sortOrder: kind === 'video' ? 1 : defaultOrder, enabled: true });
     setMediaDraftDirty(false);
+    setUploadStage('');
+    setUploadProgress(0);
     setDrawer('media');
   };
   const openReview = (item?: Review) => {
@@ -516,7 +518,7 @@ export function AdminApp() {
         message.success('上传完成，请保存素材');
       }
     } catch (error) {
-      if (valid()) message.error(error instanceof Error ? error.message : '上传失败');
+      if (valid()) { setUploadStage('上传失败，请重试'); message.error(error instanceof Error ? error.message : '上传失败'); }
     } finally {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       if (epoch === siteEpoch.current && mounted.current) {
@@ -572,6 +574,8 @@ export function AdminApp() {
       if (mediaDraft.id) await updateMediaAsset(mediaDraft.id, payload); else await createMediaAsset(payload);
       if (epoch !== siteEpoch.current || draftEpoch !== drawerEpoch.current || !mounted.current) return;
       setMediaDraftDirty(false);
+    setUploadStage('');
+    setUploadProgress(0);
       closeDrawer(true);
       await refresh();
       if (epoch === siteEpoch.current) message.success('素材已保存');
@@ -804,7 +808,7 @@ export function AdminApp() {
     <Form.Item label="来源类型"><Select aria-label="来源类型" value={mediaDraft.sourceType} onChange={(sourceType) => { setMediaDraftDirty(true); setMediaDraft({ ...mediaDraft, sourceType }); }} options={[{ value: 'url', label: 'URL' }, { value: 'upload', label: '上传' }]} /></Form.Item>
     <Form.Item label={mediaDraft.kind === 'video' ? '视频地址' : '图片地址'}><Input aria-label="素材地址" value={mediaDraft.source} onChange={(event) => { setMediaDraftDirty(true); setMediaDraft({ ...mediaDraft, source: event.target.value, sourceType: 'url', ...(mediaDraft.kind === 'video' ? { posterSource: '' } : {}) }); }} placeholder="https://... 或 /uploads/..." /></Form.Item>
     <Form.Item label="上传文件" extra={mediaDraft.kind === 'video' ? '仅 MP4，最大 50MB；自动截取首帧作为封面，失败时请手动上传封面。' : undefined}>
-      {mediaBusy && <div aria-label="上传进度"><Text>{uploadStage}</Text><Progress percent={uploadProgress} status={uploadProgress === 100 ? 'success' : 'active'} /></div>}
+      {uploadStage && <div aria-label="上传进度" role="status"><Text strong>{uploadStage}</Text><Progress percent={uploadProgress} status={uploadStage.includes('失败') || uploadStage === '封面待补充' ? 'exception' : uploadProgress === 100 ? 'success' : 'active'} />{!mediaBusy && uploadProgress === 100 && <Text>文件已上传，请点击“保存素材”完成保存。</Text>}</div>}
       <Upload accept={mediaDraft.kind === 'video' ? 'video/mp4,.mp4' : 'image/*'} showUploadList={false} disabled={mediaBusy} beforeUpload={(file) => { void handleUploadSelected(file); return false; }}><Button icon={<UploadOutlined />}>{mediaDraft.kind === 'video' ? '上传 / 替换视频' : '选择文件'}</Button></Upload>
     </Form.Item>
     {mediaDraft.kind === 'video' && <>
@@ -1183,6 +1187,7 @@ export function AdminApp() {
                 <Select
                   aria-label="当前站点"
                   className="admin-site-switch"
+                  disabled={mediaBusy || modeBusy}
                   value={currentSiteId}
                   onChange={(id) => updateSiteId(id)}
                   options={bootstrap.sites.map((site) => ({ value: site.id, label: site.name }))}
