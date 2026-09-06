@@ -105,7 +105,23 @@ function mapSettings(record: {
     updatedAt: record.updatedAt.toISOString(),
   };
 }
+async function verifyDatabaseStructure() {
+  const db = await client.$queryRawUnsafe<Array<{ database: string; schema: string; table_name: string | null }>>(`SELECT current_database() AS database, current_schema() AS schema, to_regclass($1) AS table_name`, '"Site"');
+  if (db[0]?.database !== 'fsd') throw new Error(`Refusing to initialize database ${db[0]?.database ?? 'unknown'}; DATABASE_URL must point to fsd`);
+  const required = ['Site', 'SiteSettings', 'MediaAsset', 'Review', 'FloatingPurchase', 'ProductSku', 'Order', 'OperationLog'];
+  const rows = await client.$queryRawUnsafe<Array<{ table_name: string | null }>>(`SELECT to_regclass(x) AS table_name FROM unnest($1::text[]) AS x`, required.map((name) => `"${name}"`));
+  const present = rows.filter((row) => row.table_name).length;
+  if (present > 0 && present < required.length) {
+    const missing = rows.map((row, index) => row.table_name ? null : required[index]).filter(Boolean);
+    throw new Error(`Database fsd has an incomplete schema; missing tables: ${missing.join(', ')}. Run npx prisma migrate deploy.`);
+  }
+  if (present === required.length) return false;
+  return true;
+}
 
+function requiredSchemaColumns() {
+  return ['SiteSettings.heroMediaMode', 'MediaAsset.kind', 'MediaAsset.posterSource', 'Review.displayDate'];
+}
 function mapMediaAsset(record: {
   id: number;
   siteId: number;
@@ -280,7 +296,8 @@ async function ensureSchema() {
 }
 
 async function ensureSeed() {
-  await ensureSchema();
+  const shouldInitialize = await verifyDatabaseStructure();
+  if (shouldInitialize) await ensureSchema();
 
   // 默认站点只在首次创建时激活；已有活动站点时不改变其他站点状态
   const hasActiveSite = (await client.site.count({ where: { isActive: true } })) > 0;
